@@ -7,7 +7,8 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <title>{{ $title ? $title.' · Travelera' : 'Travelera · Fly Beyond Boundaries' }}</title>
-        <link rel="icon" href="{{ asset('images/travelera-logo.png') }}" type="image/png">
+        <link rel="icon" href="{{ asset('images/favicon.png') }}" type="image/png">
+        <link rel="apple-touch-icon" href="{{ asset('images/favicon.png') }}">
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700,800|roboto:400,500,700,900&display=swap" rel="stylesheet" />
         @vite(['resources/css/app.css', 'resources/css/custom.css', 'resources/js/app.js'])
