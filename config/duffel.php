@@ -1,0 +1,57 @@
+<?php
+
+return [
+    'access_token' => env('DUFFEL_ACCESS_TOKEN'),
+    'base_url' => env('DUFFEL_BASE_URL', 'https://api.duffel.com'),
+    'version' => env('DUFFEL_VERSION', 'v2'),
+    'timeout' => (int) env('DUFFEL_TIMEOUT', 30),
+    'payment_type' => env('DUFFEL_PAYMENT_TYPE', 'balance'),
+
+    /*
+     | IATA city/airport codes used in the flight search form.
+     | Duffel accepts either an airport code (DEL) or a city code (NYC, LON).
+     */
+    'airports' => [
+        'DEL' => 'New Delhi, Delhi, India',
+        'BOM' => 'Mumbai, Bombay, India',
+        'BLR' => 'Bengaluru, Bangalore, India',
+        'GOI' => 'Goa, India',
+        'JAI' => 'Jaipur, India',
+        'HYD' => 'Hyderabad, India',
+        'MAA' => 'Chennai, Madras, India',
+        'CCU' => 'Kolkata, Calcutta, India',
+        'AMD' => 'Ahmedabad, India',
+        'PNQ' => 'Pune, India',
+        'COK' => 'Kochi, Cochin, India',
+        'DXB' => 'Dubai, UAE',
+        'AUH' => 'Abu Dhabi, UAE',
+        'SIN' => 'Singapore',
+        'BKK' => 'Bangkok, Thailand',
+        'DPS' => 'Denpasar, Bali, Indonesia',
+        'KUL' => 'Kuala Lumpur, Malaysia',
+        'LON' => 'London, United Kingdom',
+        'LHR' => 'London Heathrow, United Kingdom',
+        'LGW' => 'London Gatwick, United Kingdom',
+        'PAR' => 'Paris, France',
+        'CDG' => 'Paris Charles de Gaulle, France',
+        'NYC' => 'New York, USA',
+        'JFK' => 'New York JFK, USA',
+        'EWR' => 'Newark, New York, USA',
+        'SFO' => 'San Francisco, USA',
+        'LAX' => 'Los Angeles, USA',
+        'TYO' => 'Tokyo, Japan',
+        'NRT' => 'Tokyo Narita, Japan',
+        'HND' => 'Tokyo Haneda, Japan',
+        'SYD' => 'Sydney, Australia',
+        'MEL' => 'Melbourne, Australia',
+        'DOH' => 'Doha, Qatar',
+        'IST' => 'Istanbul, Turkey',
+        'FCO' => 'Rome, Italy',
+        'BCN' => 'Barcelona, Spain',
+        'AMS' => 'Amsterdam, Netherlands',
+        'FRA' => 'Frankfurt, Germany',
+        'ZRH' => 'Zurich, Switzerland',
+        'HKG' => 'Hong Kong',
+        'ICN' => 'Seoul, South Korea',
+    ],
+];
