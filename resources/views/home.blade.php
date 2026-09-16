@@ -66,15 +66,7 @@
             <div class="p-6 sm:p-10">
                 <h3 class="text-2xl font-extrabold text-slate-900">Where luxury meets altitude</h3>
                 <p class="mt-3 text-sm leading-6 text-slate-500">Charter a cabin, plan a milestone trip, or let us build a private itinerary around your dates. Share a few details and a specialist will follow up.</p>
-                <form method="POST" action="{{ route('contact.store') }}" class="site-form mt-6 grid gap-3">
-                    @csrf
-                    <input type="hidden" name="intent" value="enquiry">
-                    <input name="name" required placeholder="Full Name" class="rounded-xl border-slate-200 text-sm">
-                    <input name="phone" placeholder="Phone" class="rounded-xl border-slate-200 text-sm">
-                    <input type="email" name="email" required placeholder="Email" class="rounded-xl border-slate-200 text-sm">
-                    <textarea name="message" rows="2" placeholder="Tell us about the trip" class="rounded-xl border-slate-200 text-sm"></textarea>
-                    <button class="mt-1 rounded-full bg-brand-700 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-800">Submit</button>
-                </form>
+                <x-contact-form intent="enquiry" submit-label="Submit" :compact="true" class="mt-6" />
             </div>
         </div>
     </section>
@@ -153,22 +145,18 @@
                 <p class="section-kicker text-xs font-bold tracking-[0.22em] text-brand-700">CONTACT</p>
                 <h2 class="section-heading mt-2 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">LET'S PLAN YOUR<br>NEXT JOURNEY</h2>
                 <div class="mt-8 space-y-5 text-sm text-slate-600">
-                    <p class="flex items-start gap-3"><span class="mt-0.5 text-brand-700">📍</span> 42 Horizon Plaza, Connaught Place, New Delhi 110001</p>
-                    <p class="flex items-start gap-3"><span class="mt-0.5 text-brand-700">📞</span> +91 98765 43210</p>
-                    <p class="flex items-start gap-3"><span class="mt-0.5 text-brand-700">✉️</span> hello@travelera.test</p>
+                    <p class="flex items-start gap-3"><span class="mt-0.5 text-brand-700">📍</span> 30 N Gould St Ste 4000, Sheridan, WY 82801</p>
+                    <p class="flex items-start gap-3"><span class="mt-0.5 text-brand-700">📞</span> <a href="tel:+18886526415" class="hover:text-brand-700">+1 888 652 6415</a></p>
+                    <p class="flex items-start gap-3"><span class="mt-0.5 text-brand-700">✉️</span> <a href="mailto:support@travelera.us" class="hover:text-brand-700">support@travelera.us</a></p>
                 </div>
             </div>
-            <form method="POST" action="{{ route('contact.store') }}" class="site-form rounded-[28px] bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] ring-1 ring-slate-100 sm:p-8">
-                @csrf
-                <input type="hidden" name="intent" value="contact">
-                <div class="grid gap-4 sm:grid-cols-2">
-                    <input name="name" required placeholder="Full Name" class="rounded-xl border-slate-200 text-sm">
-                    <input name="phone" placeholder="Phone" class="rounded-xl border-slate-200 text-sm">
-                </div>
-                <input type="email" name="email" required placeholder="Email" class="mt-4 w-full rounded-xl border-slate-200 text-sm">
-                <textarea name="message" rows="5" placeholder="How can we help?" class="mt-4 w-full rounded-xl border-slate-200 text-sm"></textarea>
-                <button class="mt-5 w-full rounded-full bg-brand-700 py-3 text-sm font-semibold text-white hover:bg-brand-800">Submit</button>
-            </form>
+            <div class="rounded-[28px] bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] ring-1 ring-slate-100 sm:p-8">
+                <x-contact-form intent="contact" submit-label="Submit" />
+                <p class="mt-4 text-center text-sm text-slate-500">
+                    Prefer a dedicated page?
+                    <a href="{{ route('contact') }}" class="font-semibold text-brand-700 hover:underline">Open contact</a>
+                </p>
+            </div>
         </div>
     </section>
 

@@ -72,6 +72,7 @@ class StripePaymentTest extends TestCase
                 'email' => 'jane@example.com',
                 'phone_number' => '9876543210',
             ]],
+            'payment_choice' => 'pay_now',
         ]);
 
         $response->assertRedirect('https://checkout.stripe.com/c/pay/cs_test_123');

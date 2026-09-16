@@ -57,4 +57,19 @@ class Blog extends Model
             ->whereNotNull('published_at')
             ->where('published_at', '<=', now());
     }
+
+    public function coverImageSrc(): string
+    {
+        $image = (string) $this->cover_image;
+
+        if ($image === '') {
+            return '';
+        }
+
+        if (str_starts_with($image, 'http://') || str_starts_with($image, 'https://') || str_starts_with($image, '//')) {
+            return $image;
+        }
+
+        return asset(ltrim($image, '/'));
+    }
 }

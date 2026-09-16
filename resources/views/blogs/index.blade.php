@@ -7,8 +7,8 @@
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             @forelse ($blogs as $blog)
                 <a href="{{ route('blogs.show', $blog) }}" class="group overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-0.5">
-                    @if ($blog->cover_image)
-                        <img src="{{ $blog->cover_image }}" alt="" class="h-44 w-full object-cover">
+                    @if ($blog->coverImageSrc())
+                        <img src="{{ $blog->coverImageSrc() }}" alt="" class="h-44 w-full object-cover">
                     @else
                         <div class="flex h-44 items-center justify-center bg-brand-50 text-brand-700">Travelera</div>
                     @endif

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\BookingConfirmedMail;
 use App\Models\Booking;
 use App\Models\CheckoutAttempt;
 use App\Models\Flight;
@@ -9,6 +10,7 @@ use App\Services\Duffel\DuffelException;
 use App\Services\Duffel\DuffelFlightService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class BookingFulfillmentService
 {
@@ -20,7 +22,9 @@ class BookingFulfillmentService
             return $booking;
         }
 
-        return DB::transaction(function () use ($booking) {
+        $wasConfirmed = $booking->status === 'confirmed';
+
+        $fulfilled = DB::transaction(function () use ($booking) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
 
             if ($booking->payment_status === 'paid' && $booking->status === 'confirmed') {
@@ -40,6 +44,30 @@ class BookingFulfillmentService
 
             return $booking->fresh();
         });
+
+        if (! $wasConfirmed && $fulfilled->status === 'confirmed') {
+            $this->sendConfirmationEmail($fulfilled);
+        }
+
+        return $fulfilled;
+    }
+
+    public function sendConfirmationEmail(Booking $booking): void
+    {
+        $to = $booking->guest_email ?: $booking->user?->email;
+
+        if (! filled($to)) {
+            return;
+        }
+
+        try {
+            Mail::to($to)->send(new BookingConfirmedMail($booking));
+        } catch (\Throwable $exception) {
+            Log::warning('Failed to send booking confirmation email', [
+                'booking_id' => $booking->id,
+                'message' => $exception->getMessage(),
+            ]);
+        }
     }
 
     private function fulfillDuffelBooking(Booking $booking): Booking
@@ -52,6 +80,7 @@ class BookingFulfillmentService
         $payload = $attempt?->payload ?? ($booking->snapshot['checkout'] ?? []);
         $passengers = $payload['passengers'] ?? [];
         $services = $payload['services'] ?? [];
+        $orderType = ($payload['order_type'] ?? 'instant') === 'hold' ? 'hold' : 'instant';
         $offerId = $booking->duffel_offer_id;
 
         if (! $offerId || $passengers === []) {
@@ -62,7 +91,7 @@ class BookingFulfillmentService
         if ($booking->duffel_order_id) {
             $booking->update([
                 'status' => 'confirmed',
-                'payment_status' => 'paid',
+                'payment_status' => $orderType === 'hold' ? 'pending' : 'paid',
             ]);
             $this->completeCheckoutAttempts($booking);
 
@@ -70,14 +99,14 @@ class BookingFulfillmentService
         }
 
         try {
-            $order = $this->duffel->book($offerId, $passengers, $services);
+            $order = $this->duffel->book($offerId, $passengers, $services, $orderType);
         } catch (DuffelException $exception) {
             Log::error('Duffel fulfillment failed after Stripe payment', [
                 'booking_id' => $booking->id,
                 'message' => $exception->getMessage(),
             ]);
             $booking->update([
-                'payment_status' => 'paid',
+                'payment_status' => $orderType === 'hold' ? 'pending' : 'paid',
                 'status' => 'pending',
                 'notes' => trim(($booking->notes ? $booking->notes."\n" : '').'Payment received; airline booking failed: '.$exception->getMessage()),
             ]);
@@ -94,7 +123,7 @@ class BookingFulfillmentService
             'total_amount' => $order['total_amount'] ?? $booking->total_amount,
             'currency' => $order['total_currency'] ?? $booking->currency,
             'status' => 'confirmed',
-            'payment_status' => 'paid',
+            'payment_status' => $orderType === 'hold' ? 'pending' : 'paid',
             'snapshot' => array_merge(
                 $this->duffel->snapshotFromOffer($flight, $selectedServices),
                 ['checkout' => $payload]

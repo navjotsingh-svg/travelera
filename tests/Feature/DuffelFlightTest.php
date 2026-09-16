@@ -145,6 +145,7 @@ class DuffelFlightTest extends TestCase
                 ['id' => 'ase_bag_1', 'quantity' => 1],
                 ['id' => 'ase_seat_12A', 'quantity' => 1],
             ],
+            'payment_choice' => 'pay_now',
         ]);
 
         $response->assertRedirect();

@@ -115,4 +115,15 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Support inbox
+    |--------------------------------------------------------------------------
+    |
+    | Contact form queries and operational booking notices are delivered here.
+    |
+    */
+
+    'support_address' => env('SUPPORT_EMAIL', 'support@travelera.us'),
+
 ];

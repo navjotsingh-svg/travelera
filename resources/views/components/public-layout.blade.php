@@ -25,7 +25,7 @@
                     <a class="{{ request()->routeIs('about') ? 'is-active text-brand-700' : 'hover:text-brand-700' }}" href="{{ route('about') }}">About</a>
                     <a class="hover:text-brand-700" href="{{ url('/#services') }}">Services</a>
                     <a class="{{ request()->routeIs('blogs.*') ? 'is-active text-brand-700' : 'hover:text-brand-700' }}" href="{{ route('blogs.index') }}">Blog</a>
-                    <a class="hover:text-brand-700" href="{{ url('/#contact') }}">Contact</a>
+                    <a class="{{ request()->routeIs('contact') ? 'is-active text-brand-700' : 'hover:text-brand-700' }}" href="{{ route('contact') }}">Contact</a>
                 </nav>
 
                 <div class="flex items-center gap-3">
@@ -105,7 +105,7 @@
                     <a href="{{ route('about') }}">About</a>
                     <a href="{{ url('/#services') }}">Services</a>
                     <a href="{{ route('blogs.index') }}">Blog</a>
-                    <a href="{{ url('/#contact') }}">Contact</a>
+                    <a href="{{ route('contact') }}">Contact</a>
                     <a href="{{ route('flights.index') }}">Flights</a>
                     <a href="{{ route('hotels.index') }}">Hotels</a>
                     @auth
@@ -128,11 +128,16 @@
         </header>
 
         <main>
-            @if (session('status') && request()->routeIs('home', 'about', 'visa'))
-                <div class="bg-brand-50 px-4 py-3 text-center text-sm font-medium text-brand-800">{{ session('status') }}</div>
-            @endif
             {{ $slot }}
         </main>
+
+        @if (session('status') && session('status_kind'))
+            <x-success-popup
+                :title="session('status_title', 'Thank you')"
+                :message="session('status')"
+                :kind="session('status_kind', 'contact')"
+            />
+        @endif
 
         <footer class="site-footer bg-[#0b1f5c] text-blue-100">
             <div class="mx-auto max-w-6xl px-4 py-12 sm:px-6">
@@ -160,7 +165,7 @@
                         <div class="mt-4 grid gap-2 text-sm">
                             <a href="{{ route('home') }}" class="hover:text-white">Home</a>
                             <a href="{{ route('about') }}" class="hover:text-white">About</a>
-                            <a href="{{ url('/#contact') }}" class="hover:text-white">Contact</a>
+                            <a href="{{ route('contact') }}" class="hover:text-white">Contact</a>
                         </div>
                     </div>
                     <div>
@@ -175,8 +180,9 @@
                     <div>
                         <p class="text-xs font-bold tracking-[0.18em] text-white">SUPPORT</p>
                         <div class="mt-4 grid gap-2 text-sm">
-                            <a href="{{ route('visa') }}" class="hover:text-white">Visa services</a>
-                            <a href="{{ url('/#contact') }}" class="hover:text-white">Help desk</a>
+                            <a href="tel:+18886526415" class="hover:text-white">+1 888 652 6415</a>
+                            <a href="mailto:support@travelera.us" class="hover:text-white">support@travelera.us</a>
+                            <a href="{{ route('contact') }}" class="hover:text-white">Help desk</a>
                             <span>24×7 booking desk</span>
                         </div>
                     </div>

@@ -159,6 +159,9 @@ document.addEventListener('alpine:init', () => {
             activeMapIndex: 0,
             baseAmount: Number(config.baseAmount || 0),
             currency: config.currency || 'USD',
+            paymentChoice: config.paymentChoice || 'pay_now',
+            supportsHold: Boolean(config.supportsHold),
+            stripeEnabled: Boolean(config.stripeEnabled),
 
             openSeats() {
                 this.seatsOpen = true;

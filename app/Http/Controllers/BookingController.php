@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\BookingCancelledMail;
 use App\Models\Booking;
 use App\Models\Cab;
 use App\Models\CheckoutAttempt;
@@ -15,6 +16,8 @@ use App\Services\Stripe\StripeException;
 use App\Services\Stripe\StripePaymentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
 
 class BookingController extends Controller
@@ -149,6 +152,10 @@ class BookingController extends Controller
     {
         abort_unless($booking->user_id === $request->user()->id, 403);
 
+        if ($booking->status === 'cancelled') {
+            return back()->with('status', 'Booking is already cancelled.');
+        }
+
         if ($booking->provider === 'duffel' && $booking->duffel_order_id && $duffel->configured()) {
             try {
                 $duffel->cancelOrder($booking->duffel_order_id);
@@ -158,6 +165,19 @@ class BookingController extends Controller
         }
 
         $booking->update(['status' => 'cancelled']);
+        $booking = $booking->fresh(['user']);
+
+        $to = $booking->guest_email ?: $booking->user?->email;
+        if (filled($to)) {
+            try {
+                Mail::to($to)->send(new BookingCancelledMail($booking));
+            } catch (\Throwable $exception) {
+                Log::warning('Failed to send booking cancellation email', [
+                    'booking_id' => $booking->id,
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
 
         return back()->with('status', 'Booking cancelled.');
     }

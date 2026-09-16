@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BookingCancelledMail;
+use App\Mail\BookingConfirmedMail;
 use App\Models\Booking;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
 
 class BookingController extends Controller
@@ -46,7 +50,29 @@ class BookingController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        $previousStatus = $booking->status;
         $booking->update($validated);
+        $booking = $booking->fresh(['user']);
+
+        if ($previousStatus !== $booking->status) {
+            $to = $booking->guest_email ?: $booking->user?->email;
+
+            if (filled($to)) {
+                try {
+                    if ($booking->status === 'confirmed') {
+                        Mail::to($to)->send(new BookingConfirmedMail($booking));
+                    } elseif ($booking->status === 'cancelled') {
+                        Mail::to($to)->send(new BookingCancelledMail($booking));
+                    }
+                } catch (\Throwable $exception) {
+                    Log::warning('Failed to send admin booking status email', [
+                        'booking_id' => $booking->id,
+                        'status' => $booking->status,
+                        'message' => $exception->getMessage(),
+                    ]);
+                }
+            }
+        }
 
         return back()->with('status', 'Booking updated.');
     }

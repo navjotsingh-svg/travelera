@@ -19,15 +19,13 @@
                 </div>
             @endforeach
         </div>
-        <form method="POST" action="{{ route('contact.store') }}" class="mt-12 max-w-xl rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-100">
-            @csrf
-            <input type="hidden" name="intent" value="enquiry">
-            <p class="font-bold text-slate-900">Ask for a visa check</p>
-            <input name="name" required placeholder="Full Name" class="mt-4 w-full rounded-xl border-slate-200 text-sm">
-            <input type="email" name="email" required placeholder="Email" class="mt-3 w-full rounded-xl border-slate-200 text-sm">
-            <input name="phone" placeholder="Phone" class="mt-3 w-full rounded-xl border-slate-200 text-sm">
-            <textarea name="message" rows="4" placeholder="Passport nationality, destination and travel dates" class="mt-3 w-full rounded-xl border-slate-200 text-sm"></textarea>
-            <button class="mt-4 rounded-full bg-brand-700 px-6 py-3 text-sm font-semibold text-white">Submit</button>
-        </form>
+        <div class="mt-12 max-w-xl rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-100">
+            <x-contact-form
+                intent="visa"
+                submit-label="Submit"
+                :show-title="true"
+                title="Ask for a visa check"
+            />
+        </div>
     </section>
 </x-public-layout>

@@ -1,16 +1,20 @@
-<x-public-layout title="Book {{ $flight['airline'] }} {{ $flight['flight_number'] }}">
+<x-public-layout title="Checkout · {{ $flight['origin'] }} → {{ $flight['destination'] }}">
     @php
         $bagServices = $flight['bag_services'] ?? [];
         $includedBags = $flight['included_baggage'] ?? [];
         $passengersMeta = collect($flight['passengers'] ?? [])->values()->map(fn ($p, $i) => [
             'id' => $p['id'] ?? ('pas_'.$i),
-            'label' => 'Passenger '.($i + 1),
+            'label' => 'Adult '.($i + 1),
         ])->all();
         $nameParts = explode(' ', auth()->user()->name, 2);
+        $firstSlice = ($flight['slices'] ?? [])[0] ?? null;
+        $firstSegment = ($firstSlice['segments'] ?? [])[0] ?? null;
+        $supportsHold = (bool) ($flight['supports_hold'] ?? false);
+        $paymentDefault = old('payment_choice', 'pay_now');
     @endphp
 
     <div
-        class="flight-book"
+        class="duffel-checkout"
         x-data="flightBookExtras({
             baseAmount: {{ json_encode((float) $flight['total_amount']) }},
             currency: {{ json_encode($flight['total_currency']) }},
@@ -18,197 +22,270 @@
             seatMaps: {{ Js::from($seatMaps) }},
             passengers: {{ Js::from($passengersMeta) }},
             oldServices: {{ Js::from(old('services', [])) }},
+            paymentChoice: {{ json_encode($paymentDefault) }},
+            supportsHold: {{ $supportsHold ? 'true' : 'false' }},
+            stripeEnabled: {{ ! empty($stripeEnabled) ? 'true' : 'false' }},
         })"
     >
-        <div class="flight-book-inner">
-            <a href="{{ route('flights.offer', $flight['id']) }}" class="flight-book-back">← Offer details</a>
-            <div class="flight-book-grid">
-                <div class="flight-book-main">
-                    <header class="flight-book-hero">
-                        <p class="flight-book-kicker">Complete your booking</p>
-                        <h1>Passenger details &amp; add-ons</h1>
-                        <p>{{ $flight['airline'] }} {{ $flight['flight_number'] }} · {{ $flight['origin'] }} → {{ $flight['destination'] }}</p>
-                    </header>
+        <div class="duffel-checkout-inner">
+            <nav class="duffel-crumbs">
+                <a href="{{ route('flights.index') }}">Flights</a>
+                <span>›</span>
+                <a href="{{ route('flights.offer', $flight['id']) }}">Fare options</a>
+                <span>›</span>
+                <strong>Checkout</strong>
+            </nav>
 
-                    @if ($errors->any())
-                        <div class="flight-book-error">{{ $errors->first() }}</div>
+            <div class="duffel-badges">
+                <span>{{ ! empty($flight['is_return']) ? 'Return' : 'One way' }}</span>
+                <span>{{ optional($flight['departure_at'])->format('D, d M Y') }}</span>
+                <span>{{ $flight['passenger_count'] }} Passenger{{ $flight['passenger_count'] > 1 ? 's' : '' }}</span>
+                <span>{{ ucfirst(str_replace('_', ' ', (string) $flight['cabin_class'])) }}</span>
+            </div>
+
+            <h1 class="duffel-checkout-title">{{ $flight['origin'] }} → {{ $flight['destination'] }}</h1>
+            <p class="duffel-checkout-expire">
+                This offer will expire on {{ optional($flight['expires_at'])->format('d/m/Y, H:i') ?? 'soon' }}.
+            </p>
+
+            @if ($errors->any())
+                <div class="flight-book-error">{{ $errors->first() }}</div>
+            @endif
+
+            <section class="duffel-selected">
+                <h2>Selected flights</h2>
+                <div class="duffel-selected-head">
+                    @if (! empty($flight['airline_logo']))
+                        <img src="{{ $flight['airline_logo'] }}" alt="" class="duffel-airline-logo">
+                    @else
+                        <span class="duffel-airline-mark">{{ strtoupper(substr($flight['airline'], 0, 1)) }}</span>
                     @endif
-
-                    <form method="POST" action="{{ route('flights.book.store', $flight['id']) }}" class="flight-book-form" @submit="syncServices()">
-                        @csrf
-
-                        <template x-for="(service, index) in selectedServices()" :key="service.id + '-' + index">
-                            <div>
-                                <input type="hidden" :name="`services[${index}][id]`" :value="service.id">
-                                <input type="hidden" :name="`services[${index}][quantity]`" :value="service.quantity">
-                            </div>
-                        </template>
-
-                        @foreach ($flight['passengers'] as $index => $passenger)
-                            <fieldset class="flight-book-card">
-                                <legend>Passenger {{ $index + 1 }}</legend>
-                                <div class="flight-book-fields">
-                                    <label>
-                                        <span>Title</span>
-                                        <select name="passengers[{{ $index }}][title]" required>
-                                            @foreach (['mr' => 'Mr', 'ms' => 'Ms', 'mrs' => 'Mrs', 'miss' => 'Miss', 'dr' => 'Dr'] as $value => $label)
-                                                <option value="{{ $value }}" @selected(old("passengers.$index.title", 'mr') === $value)>{{ $label }}</option>
-                                            @endforeach
-                                        </select>
-                                    </label>
-                                    <label>
-                                        <span>Gender</span>
-                                        <select name="passengers[{{ $index }}][gender]" required>
-                                            <option value="m" @selected(old("passengers.$index.gender", 'm') === 'm')>Male</option>
-                                            <option value="f" @selected(old("passengers.$index.gender") === 'f')>Female</option>
-                                        </select>
-                                    </label>
-                                    <label>
-                                        <span>Given name</span>
-                                        <input name="passengers[{{ $index }}][given_name]" value="{{ old("passengers.$index.given_name", $index === 0 ? ($nameParts[0] ?? '') : '') }}" required>
-                                    </label>
-                                    <label>
-                                        <span>Family name</span>
-                                        <input name="passengers[{{ $index }}][family_name]" value="{{ old("passengers.$index.family_name", $index === 0 ? ($nameParts[1] ?? 'Traveler') : '') }}" required>
-                                    </label>
-                                    <label>
-                                        <span>Date of birth</span>
-                                        <input type="date" name="passengers[{{ $index }}][born_on]" value="{{ old("passengers.$index.born_on") }}" max="{{ now()->subYears(12)->toDateString() }}" required>
-                                    </label>
-                                    <label>
-                                        <span>Email</span>
-                                        <input type="email" name="passengers[{{ $index }}][email]" value="{{ old("passengers.$index.email", auth()->user()->email) }}" required>
-                                    </label>
-                                    <label class="flight-book-span-2">
-                                        <span>Phone (with country code)</span>
-                                        <input name="passengers[{{ $index }}][phone_number]" value="{{ old("passengers.$index.phone_number", auth()->user()->phone ? '+91'.auth()->user()->phone : '+919876543210') }}" placeholder="+919876543210" required>
-                                    </label>
-                                </div>
-                            </fieldset>
-                        @endforeach
-
-                        <section class="flight-book-card flight-book-addons">
-                            <div class="flight-book-card-head">
-                                <div>
-                                    <h2>Baggage</h2>
-                                    <p>Included allowance and extra bags from Duffel</p>
-                                </div>
-                                @if (count($bagServices))
-                                    <button type="button" class="flight-book-sheet-btn" @click="bagsOpen = true">Add baggage</button>
-                                @endif
-                            </div>
-
-                            <div class="flight-bag-grid">
-                                @forelse ($includedBags as $bag)
-                                    <div class="flight-bag-chip is-included">
-                                        <span class="flight-bag-icon" aria-hidden="true">{{ ($bag['type'] ?? '') === 'carry_on' ? '🎒' : '🧳' }}</span>
-                                        <div>
-                                            <p class="flight-bag-title">{{ $bag['label'] }}</p>
-                                            <p class="flight-bag-meta">{{ $bag['quantity'] }} included</p>
-                                        </div>
-                                    </div>
-                                @empty
-                                    <div class="flight-bag-chip is-muted">
-                                        <span class="flight-bag-icon" aria-hidden="true">🧳</span>
-                                        <div>
-                                            <p class="flight-bag-title">No free check-in bag</p>
-                                            <p class="flight-bag-meta">Add baggage if the airline offers it</p>
-                                        </div>
-                                    </div>
-                                @endforelse
-
-                                <template x-for="bag in selectedBags()" :key="bag.id">
-                                    <div class="flight-bag-chip is-extra">
-                                        <span class="flight-bag-icon" aria-hidden="true">➕</span>
-                                        <div>
-                                            <p class="flight-bag-title" x-text="bag.label"></p>
-                                            <p class="flight-bag-meta">
-                                                <span x-text="bag.quantity + ' × ' + formatMoney(bag.amount)"></span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-
-                            @unless (count($bagServices))
-                                <p class="flight-book-empty-note">Extra baggage is not offered on this fare right now.</p>
-                            @endunless
-                        </section>
-
-                        <section class="flight-book-card flight-book-addons">
-                            <div class="flight-book-card-head">
-                                <div>
-                                    <h2>Seats</h2>
-                                    <p>Pick your seat from the airline seat map</p>
-                                </div>
-                                @if (count($seatMaps))
-                                    <button type="button" class="flight-book-sheet-btn" @click="openSeats()">Select seats</button>
-                                @endif
-                            </div>
-
-                            <div class="flight-seat-summary" x-show="selectedSeats().length" x-cloak>
-                                <template x-for="seat in selectedSeats()" :key="seat.id">
-                                    <div class="flight-seat-chip">
-                                        <strong x-text="seat.designator"></strong>
-                                        <span x-text="seat.passengerLabel"></span>
-                                        <span x-text="formatMoney(seat.amount)"></span>
-                                    </div>
-                                </template>
-                            </div>
-
-                            <p class="flight-book-empty-note" x-show="!selectedSeats().length">
-                                @if (count($seatMaps))
-                                    No seats selected yet — aisle or window seats may be free or paid.
-                                @else
-                                    Seat map is unavailable for this offer.
-                                @endif
-                            </p>
-                        </section>
-
-                        <button type="submit" class="flight-book-submit">
-                            {{ ! empty($stripeEnabled) ? 'Pay securely with Stripe' : 'Confirm booking' }}
-                            · <span x-text="formatMoney(grandTotal())"></span>
-                        </button>
-                        @if (! empty($stripeEnabled))
-                            <p class="mt-3 text-center text-xs text-slate-500">You’ll complete card payment on Stripe’s secure checkout, then we confirm the airline ticket.</p>
-                        @endif
-                    </form>
+                    <div>
+                        <p class="duffel-selected-when">
+                            {{ optional($flight['departure_at'])->format('D, d M Y H:i') }}
+                            –
+                            {{ optional($flight['arrival_at'])->format('H:i') }}
+                        </p>
+                        <p class="duffel-selected-meta">
+                            {{ $flight['fare_brand'] ?? ucfirst(str_replace('_', ' ', (string) $flight['cabin_class'])) }}
+                            · {{ $flight['airline'] }}
+                        </p>
+                    </div>
+                    <div class="duffel-selected-right">
+                        <strong>{{ $flight['duration'] }}</strong>
+                        <span>{{ $flight['origin'] }} – {{ $flight['destination'] }}</span>
+                        <span>{{ $flight['stops'] === 0 ? 'Non-stop' : $flight['stops'].' stop'.($flight['stops'] > 1 ? 's' : '') }}</span>
+                    </div>
                 </div>
 
-                <aside class="flight-book-side">
-                    <div class="flight-fare-card">
-                        <p class="flight-fare-kicker">Fare summary</p>
-                        <h2>{{ $flight['origin'] }} → {{ $flight['destination'] }}</h2>
-                        <p class="flight-fare-meta">{{ $flight['airline'] }} · {{ optional($flight['departure_at'])->format('D, d M · H:i') }}</p>
+                @if ($firstSegment)
+                    <div class="duffel-timeline">
+                        <div class="duffel-timeline-item">
+                            <span class="duffel-timeline-dot"></span>
+                            <p>
+                                <strong>{{ optional($firstSegment['departure_at'])->format('D, d M Y, H:i') }}</strong>
+                                Depart from {{ $firstSegment['origin_name'] ?: $firstSegment['origin_city'] ?: '' }}
+                                ({{ $firstSegment['origin'] }})
+                            </p>
+                        </div>
+                        <div class="duffel-timeline-mid">
+                            <span class="duffel-timeline-line"></span>
+                            <p>Flight duration: {{ $firstSegment['duration'] ?: $flight['duration'] }}</p>
+                        </div>
+                        <div class="duffel-timeline-item">
+                            <span class="duffel-timeline-dot"></span>
+                            <p>
+                                <strong>{{ optional($firstSegment['arrival_at'])->format('D, d M Y, H:i') }}</strong>
+                                Arrive at {{ $firstSegment['destination_name'] ?: $firstSegment['destination_city'] ?: '' }}
+                                ({{ $firstSegment['destination'] }})
+                            </p>
+                        </div>
+                    </div>
 
-                        <dl class="flight-fare-lines">
+                    <div class="duffel-selected-foot">
+                        <span>{{ ucfirst(str_replace('_', ' ', (string) ($firstSegment['passengers'][0]['cabin_class'] ?? $flight['cabin_class']))) }}</span>
+                        <span>{{ $firstSegment['airline'] ?: $flight['airline'] }}</span>
+                        @if (! empty($firstSegment['aircraft']))
+                            <span>{{ $firstSegment['aircraft'] }}</span>
+                        @endif
+                        <span>{{ $firstSegment['flight_number'] ?: $flight['flight_number'] }}</span>
+                        @foreach ($includedBags as $bag)
+                            <span class="duffel-bag-pill">{{ $bag['quantity'] }}× {{ $bag['label'] }}</span>
+                        @endforeach
+                    </div>
+                @endif
+            </section>
+
+            <form method="POST" action="{{ route('flights.book.store', $flight['id']) }}" class="duffel-checkout-form" @submit="syncServices()">
+                @csrf
+
+                <template x-for="(service, index) in selectedServices()" :key="service.id + '-' + index">
+                    <div>
+                        <input type="hidden" :name="`services[${index}][id]`" :value="service.id">
+                        <input type="hidden" :name="`services[${index}][quantity]`" :value="service.quantity">
+                    </div>
+                </template>
+                <input type="hidden" name="payment_choice" :value="paymentChoice">
+
+                <section class="duffel-pay-choice">
+                    <h2>Paying now, or later?</h2>
+                    <p>Pay now to confirm seats and bags, or hold this fare if the airline allows it.</p>
+                    <div class="duffel-pay-grid">
+                        <button
+                            type="button"
+                            class="duffel-pay-card"
+                            :class="{ 'is-selected': paymentChoice === 'pay_now' }"
+                            @click="paymentChoice = 'pay_now'"
+                        >
+                            <span class="duffel-pay-check" aria-hidden="true"></span>
+                            <span>
+                                <strong>Pay now</strong>
+                                <small>Pay now and confirm seat and baggage selection</small>
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            class="duffel-pay-card"
+                            :class="{ 'is-selected': paymentChoice === 'hold', 'is-disabled': !supportsHold }"
+                            @click="supportsHold && (paymentChoice = 'hold')"
+                            :disabled="!supportsHold"
+                        >
+                            <span class="duffel-pay-check" aria-hidden="true"></span>
+                            <span>
+                                <strong>Hold order</strong>
+                                <small>{{ $supportsHold ? 'Hold space on this trip and pay later' : 'Hold is not available on this fare' }}</small>
+                            </span>
+                        </button>
+                    </div>
+                </section>
+
+                <section class="duffel-passengers">
+                    <h2>Passengers</h2>
+                    @foreach ($flight['passengers'] as $index => $passenger)
+                        <div class="duffel-passenger-block">
+                            <span class="duffel-pax-badge">Adult {{ $index + 1 }}</span>
+
+                            <h3>Personal details</h3>
+                            <div class="duffel-fields duffel-fields-3">
+                                <label>
+                                    <span>Title *</span>
+                                    <select name="passengers[{{ $index }}][title]" required>
+                                        @foreach (['mr' => 'Mr', 'ms' => 'Ms', 'mrs' => 'Mrs', 'miss' => 'Miss', 'dr' => 'Dr'] as $value => $label)
+                                            <option value="{{ $value }}" @selected(old("passengers.$index.title", 'mr') === $value)>{{ $label }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Given name *</span>
+                                    <input name="passengers[{{ $index }}][given_name]" value="{{ old("passengers.$index.given_name", $index === 0 ? ($nameParts[0] ?? '') : '') }}" required>
+                                </label>
+                                <label>
+                                    <span>Family name *</span>
+                                    <input name="passengers[{{ $index }}][family_name]" value="{{ old("passengers.$index.family_name", $index === 0 ? ($nameParts[1] ?? 'Traveler') : '') }}" required>
+                                </label>
+                                <label>
+                                    <span>Date of birth *</span>
+                                    <input type="date" name="passengers[{{ $index }}][born_on]" value="{{ old("passengers.$index.born_on") }}" max="{{ now()->subYears(12)->toDateString() }}" required>
+                                </label>
+                                <label>
+                                    <span>Gender *</span>
+                                    <select name="passengers[{{ $index }}][gender]" required>
+                                        <option value="m" @selected(old("passengers.$index.gender", 'm') === 'm')>Male</option>
+                                        <option value="f" @selected(old("passengers.$index.gender") === 'f')>Female</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Email *</span>
+                                    <input type="email" name="passengers[{{ $index }}][email]" value="{{ old("passengers.$index.email", auth()->user()->email) }}" required>
+                                </label>
+                                <label class="duffel-span-2">
+                                    <span>Phone *</span>
+                                    <input
+                                        name="passengers[{{ $index }}][phone_number]"
+                                        value="{{ old("passengers.$index.phone_number", $index === 0 ? ($defaultPhone ?? '') : '') }}"
+                                        placeholder="+919876543210"
+                                        required
+                                    >
+                                </label>
+                            </div>
+
+                            <h3>Passport details</h3>
+                            <div class="duffel-fields duffel-fields-2">
+                                <label class="duffel-span-2">
+                                    <span>Country of issue</span>
+                                    <input name="passengers[{{ $index }}][passport_country]" value="{{ old("passengers.$index.passport_country") }}" placeholder="India">
+                                </label>
+                                <label>
+                                    <span>Passport number</span>
+                                    <input name="passengers[{{ $index }}][passport_number]" value="{{ old("passengers.$index.passport_number") }}">
+                                </label>
+                                <label>
+                                    <span>Expiry date</span>
+                                    <input type="date" name="passengers[{{ $index }}][passport_expiry]" value="{{ old("passengers.$index.passport_expiry") }}" min="{{ now()->toDateString() }}">
+                                </label>
+                            </div>
+                        </div>
+                    @endforeach
+                </section>
+
+                <section class="duffel-extras">
+                    <h2>Add extras</h2>
+
+                    <div class="duffel-extra-row">
+                        <div class="duffel-extra-copy">
+                            <span class="duffel-extra-icon" aria-hidden="true">🧳</span>
                             <div>
-                                <dt>Base fare</dt>
-                                <dd><x-money :amount="$flight['total_amount']" :currency="$flight['total_currency']" /></dd>
+                                <strong>Extra baggage</strong>
+                                <p>Add any extra baggage you need for your trip</p>
                             </div>
-                            <div x-show="extrasTotal() > 0" x-cloak>
-                                <dt>Seats &amp; bags</dt>
-                                <dd x-text="formatMoney(extrasTotal())"></dd>
-                            </div>
-                            <div class="is-total">
-                                <dt>Total</dt>
-                                <dd x-text="formatMoney(grandTotal())"></dd>
-                            </div>
-                        </dl>
-
-                        @if (count($includedBags))
-                            <div class="flight-fare-bags">
-                                <p>Included</p>
-                                <ul>
-                                    @foreach ($includedBags as $bag)
-                                        <li>{{ $bag['quantity'] }}× {{ $bag['label'] }}</li>
-                                    @endforeach
-                                </ul>
-                            </div>
+                        </div>
+                        @if (count($bagServices))
+                            <button type="button" class="duffel-extra-action" @click="bagsOpen = true">
+                                <span x-text="selectedBags().length ? 'Edit' : 'Add'"></span>
+                            </button>
+                        @else
+                            <span class="duffel-extra-na">Not available</span>
                         @endif
                     </div>
-                </aside>
-            </div>
+
+                    <div class="duffel-extra-row">
+                        <div class="duffel-extra-copy">
+                            <span class="duffel-extra-icon" aria-hidden="true">💺</span>
+                            <div>
+                                <strong>Seat selection</strong>
+                                <p>Specify where on the plane you’d like to sit</p>
+                            </div>
+                        </div>
+                        @if (count($seatMaps))
+                            <button type="button" class="duffel-extra-action" @click="openSeats()">
+                                <span x-text="selectedSeats().length ? 'Edit' : 'Select'"></span>
+                            </button>
+                        @else
+                            <span class="duffel-extra-na">Not available</span>
+                        @endif
+                    </div>
+
+                    <div class="duffel-extra-summary" x-show="selectedBags().length || selectedSeats().length" x-cloak>
+                        <template x-for="bag in selectedBags()" :key="bag.id">
+                            <p x-text="bag.label + ' · ' + formatMoney(bag.amount)"></p>
+                        </template>
+                        <template x-for="seat in selectedSeats()" :key="seat.id">
+                            <p x-text="'Seat ' + seat.designator + ' · ' + formatMoney(seat.amount)"></p>
+                        </template>
+                    </div>
+                </section>
+
+                <div class="duffel-checkout-footer">
+                    <div>
+                        <p class="duffel-footer-label">Total</p>
+                        <p class="duffel-footer-total" x-text="formatMoney(grandTotal())"></p>
+                    </div>
+                    <button type="submit" class="duffel-checkout-submit">
+                        <span x-text="paymentChoice === 'hold' ? 'Hold this fare' : (stripeEnabled ? 'Pay securely with Stripe' : 'Confirm booking')"></span>
+                        · <span x-text="formatMoney(grandTotal())"></span>
+                    </button>
+                </div>
+            </form>
         </div>
 
         <div class="flight-sheet" x-show="bagsOpen" x-cloak>
@@ -251,31 +328,16 @@
                     </div>
                     <button type="button" class="flight-sheet-close" @click="seatsOpen = false">Done</button>
                 </div>
-
                 <div class="flight-seat-toolbar" x-show="passengers.length > 1">
                     <template x-for="(passenger, index) in passengers" :key="passenger.id">
-                        <button
-                            type="button"
-                            class="flight-seat-pax"
-                            :class="{ 'is-active': activePassengerIndex === index }"
-                            @click="activePassengerIndex = index"
-                            x-text="passenger.label"
-                        ></button>
+                        <button type="button" class="flight-seat-pax" :class="{ 'is-active': activePassengerIndex === index }" @click="activePassengerIndex = index" x-text="passenger.label"></button>
                     </template>
                 </div>
-
                 <div class="flight-seat-toolbar" x-show="seatMaps.length > 1">
                     <template x-for="(map, index) in seatMaps" :key="map.id || index">
-                        <button
-                            type="button"
-                            class="flight-seat-leg"
-                            :class="{ 'is-active': activeMapIndex === index }"
-                            @click="activeMapIndex = index"
-                            x-text="'Flight ' + (index + 1)"
-                        ></button>
+                        <button type="button" class="flight-seat-leg" :class="{ 'is-active': activeMapIndex === index }" @click="activeMapIndex = index" x-text="'Flight ' + (index + 1)"></button>
                     </template>
                 </div>
-
                 <div class="flight-sheet-body flight-seat-map-wrap">
                     <template x-if="activeMap()">
                         <div class="flight-seat-map">
@@ -286,14 +348,7 @@
                                     <template x-for="(row, rowIndex) in cabin.rows" :key="rowIndex">
                                         <div class="flight-seat-row">
                                             <template x-for="(el, elIndex) in row.elements" :key="elIndex">
-                                                <button
-                                                    type="button"
-                                                    class="flight-seat-cell"
-                                                    :class="seatClass(el)"
-                                                    :disabled="!el.available || !serviceForPassenger(el)"
-                                                    @click="pickSeat(el)"
-                                                    :title="el.designator || el.type"
-                                                >
+                                                <button type="button" class="flight-seat-cell" :class="seatClass(el)" :disabled="!el.available || !serviceForPassenger(el)" @click="pickSeat(el)" :title="el.designator || el.type">
                                                     <span x-text="el.type === 'seat' ? (el.designator || '·') : (el.type === 'aisle' ? '' : '·')"></span>
                                                 </button>
                                             </template>
@@ -301,11 +356,6 @@
                                     </template>
                                 </div>
                             </template>
-                            <div class="flight-seat-legend">
-                                <span><i class="is-free"></i> Available</span>
-                                <span><i class="is-selected"></i> Selected</span>
-                                <span><i class="is-taken"></i> Unavailable</span>
-                            </div>
                         </div>
                     </template>
                 </div>

@@ -197,10 +197,11 @@ class DuffelFlightService
         ];
     }
 
-    public function book(string $offerId, array $passengers, array $services = []): array
+    public function book(string $offerId, array $passengers, array $services = [], string $orderType = 'instant'): array
     {
         $offer = $this->client->getOffer($offerId, returnAvailableServices: true);
         $selectedServices = $this->normalizeSelectedServices($offer, $services);
+        $orderType = $orderType === 'hold' ? 'hold' : 'instant';
 
         $orderPassengers = [];
         foreach ($offer['passengers'] ?? [] as $index => $offerPassenger) {
@@ -223,18 +224,21 @@ class DuffelFlightService
         );
 
         $payload = [
-            'type' => 'instant',
+            'type' => $orderType,
             'selected_offers' => [$offerId],
             'passengers' => $orderPassengers,
-            'payments' => [[
-                'type' => config('duffel.payment_type', 'balance'),
-                'amount' => $paymentAmount,
-                'currency' => $offer['total_currency'] ?? 'USD',
-            ]],
             'metadata' => [
                 'source' => 'travelera',
             ],
         ];
+
+        if ($orderType === 'instant') {
+            $payload['payments'] = [[
+                'type' => config('duffel.payment_type', 'balance'),
+                'amount' => $paymentAmount,
+                'currency' => $offer['total_currency'] ?? 'USD',
+            ]];
+        }
 
         if ($selectedServices !== []) {
             $payload['services'] = collect($selectedServices)
@@ -249,6 +253,7 @@ class DuffelFlightService
         $order = $this->client->createOrder($payload);
         $order['_selected_services'] = $selectedServices;
         $order['_charged_amount'] = $paymentAmount;
+        $order['_order_type'] = $orderType;
 
         return $order;
     }
@@ -272,39 +277,65 @@ class DuffelFlightService
             'id' => $offer['id'],
             'airline' => $carrier['name'] ?? $offer['owner']['name'] ?? 'Airline',
             'airline_code' => $carrier['iata_code'] ?? $offer['owner']['iata_code'] ?? '',
+            'airline_logo' => $carrier['logo_symbol_url']
+                ?? ($offer['owner']['logo_symbol_url'] ?? null),
             'flight_number' => $this->flightNumber($firstSegment),
             'origin' => $firstSegment['origin']['iata_code'] ?? ($firstSlice['origin']['iata_code'] ?? ''),
             'origin_name' => $firstSegment['origin']['name'] ?? ($firstSlice['origin']['name'] ?? ''),
+            'origin_city' => $firstSegment['origin']['city_name'] ?? ($firstSlice['origin']['city_name'] ?? ''),
             'destination' => $lastSegment['destination']['iata_code'] ?? ($firstSlice['destination']['iata_code'] ?? ''),
             'destination_name' => $lastSegment['destination']['name'] ?? ($firstSlice['destination']['name'] ?? ''),
+            'destination_city' => $lastSegment['destination']['city_name'] ?? ($firstSlice['destination']['city_name'] ?? ''),
             'departure_at' => isset($firstSegment['departing_at']) ? Carbon::parse($firstSegment['departing_at']) : null,
             'arrival_at' => isset($lastSegment['arriving_at']) ? Carbon::parse($lastSegment['arriving_at']) : null,
             'duration' => $this->formatDuration($firstSlice['duration'] ?? null),
             'stops' => max(0, count($firstSlice['segments'] ?? []) - 1),
-            'cabin_class' => $offer['cabin_class'] ?? ($firstSlice['fare_brand_name'] ?? 'economy'),
+            'cabin_class' => $offer['cabin_class'] ?? 'economy',
+            'fare_brand' => $firstSlice['fare_brand_name'] ?? ($offer['cabin_class'] ?? 'Standard'),
             'total_amount' => $offer['total_amount'] ?? '0',
             'total_currency' => $offer['total_currency'] ?? 'USD',
             'expires_at' => isset($offer['expires_at']) ? Carbon::parse($offer['expires_at']) : null,
             'passengers' => $offer['passengers'] ?? [],
             'passenger_count' => count($offer['passengers'] ?? []),
             'is_return' => $slices->count() > 1,
+            'flight_key' => implode('|', [
+                $firstSegment['origin']['iata_code'] ?? '',
+                $lastSegment['destination']['iata_code'] ?? '',
+                $firstSegment['departing_at'] ?? '',
+                $this->flightNumber($firstSegment),
+            ]),
+            'supports_hold' => ! (bool) ($offer['payment_requirements']['requires_instant_payment'] ?? false),
+            'carbon_emissions' => $firstSlice['carbon_emissions']['tonnes']
+                ?? ($offer['total_emissions_kg'] ?? null),
         ];
+
+        $presented['fare_features'] = $this->presentFareFeatures($offer, $detailed);
 
         if ($detailed) {
             $presented['slices'] = $slices->map(function (array $slice) {
                 return [
                     'origin' => $slice['origin']['iata_code'] ?? '',
+                    'origin_name' => $slice['origin']['name'] ?? '',
+                    'origin_city' => $slice['origin']['city_name'] ?? '',
                     'destination' => $slice['destination']['iata_code'] ?? '',
+                    'destination_name' => $slice['destination']['name'] ?? '',
+                    'destination_city' => $slice['destination']['city_name'] ?? '',
                     'duration' => $this->formatDuration($slice['duration'] ?? null),
+                    'fare_brand' => $slice['fare_brand_name'] ?? null,
                     'segments' => collect($slice['segments'] ?? [])->map(function (array $segment) {
                         return [
                             'id' => $segment['id'] ?? null,
                             'airline' => $segment['operating_carrier']['name'] ?? ($segment['marketing_carrier']['name'] ?? ''),
+                            'airline_logo' => $segment['operating_carrier']['logo_symbol_url']
+                                ?? ($segment['marketing_carrier']['logo_symbol_url'] ?? null),
                             'flight_number' => $this->flightNumber($segment),
+                            'aircraft' => $segment['aircraft']['name'] ?? null,
                             'origin' => $segment['origin']['iata_code'] ?? '',
                             'origin_name' => $segment['origin']['name'] ?? '',
+                            'origin_city' => $segment['origin']['city_name'] ?? '',
                             'destination' => $segment['destination']['iata_code'] ?? '',
                             'destination_name' => $segment['destination']['name'] ?? '',
+                            'destination_city' => $segment['destination']['city_name'] ?? '',
                             'departure_at' => isset($segment['departing_at']) ? Carbon::parse($segment['departing_at']) : null,
                             'arrival_at' => isset($segment['arriving_at']) ? Carbon::parse($segment['arriving_at']) : null,
                             'duration' => $this->formatDuration($segment['duration'] ?? null),
@@ -356,19 +387,101 @@ class DuffelFlightService
         $raw = trim((string) $phone);
         $digits = preg_replace('/\D+/', '', $raw) ?: '';
 
-        if (str_starts_with($raw, '+')) {
-            return '+'.$digits;
+        // Collapse accidental doubled Indian country codes (+91+91..., 9191...).
+        while (str_starts_with($digits, '9191') && strlen($digits) > 12) {
+            $digits = substr($digits, 2);
+        }
+
+        if (str_starts_with($raw, '+') || str_starts_with($digits, '00')) {
+            if (str_starts_with($digits, '00')) {
+                $digits = substr($digits, 2);
+            }
+
+            return $digits !== '' ? '+'.$digits : '+910000000000';
         }
 
         if (strlen($digits) === 10) {
             return '+91'.$digits;
         }
 
-        if (str_starts_with($digits, '00')) {
-            return '+'.substr($digits, 2);
+        if (strlen($digits) === 12 && str_starts_with($digits, '91')) {
+            return '+'.$digits;
         }
 
         return $digits !== '' ? '+'.$digits : '+910000000000';
+    }
+
+    private function presentFareFeatures(array $offer, bool $detailed = false): array
+    {
+        $conditions = $offer['conditions'] ?? [];
+        $change = $conditions['change_before_departure'] ?? null;
+        $refund = $conditions['refund_before_departure'] ?? null;
+        $supportsHold = ! (bool) ($offer['payment_requirements']['requires_instant_payment'] ?? false);
+
+        $features = [];
+
+        if (is_array($change)) {
+            if (($change['allowed'] ?? false) === true) {
+                $penalty = $change['penalty_amount'] ?? null;
+                $currency = $change['penalty_currency'] ?? ($offer['total_currency'] ?? '');
+                $features[] = [
+                    'type' => 'changes',
+                    'label' => $penalty !== null && (float) $penalty > 0
+                        ? 'Changes allowed (from '.$currency.' '.$penalty.')'
+                        : 'Changes allowed',
+                ];
+            } elseif (array_key_exists('allowed', $change) && $change['allowed'] === false) {
+                $features[] = ['type' => 'changes', 'label' => 'Changes not allowed'];
+            } else {
+                $features[] = ['type' => 'changes', 'label' => 'No data on changes'];
+            }
+        } else {
+            $features[] = ['type' => 'changes', 'label' => 'No data on changes'];
+        }
+
+        if (is_array($refund)) {
+            if (($refund['allowed'] ?? false) === true) {
+                $penalty = $refund['penalty_amount'] ?? null;
+                $currency = $refund['penalty_currency'] ?? ($offer['total_currency'] ?? '');
+                $features[] = [
+                    'type' => 'refunds',
+                    'label' => $penalty !== null && (float) $penalty > 0
+                        ? 'Refundable (from '.$currency.' '.$penalty.')'
+                        : 'Refundable',
+                ];
+            } elseif (array_key_exists('allowed', $refund) && $refund['allowed'] === false) {
+                $features[] = ['type' => 'refunds', 'label' => 'Non-refundable'];
+            } else {
+                $features[] = ['type' => 'refunds', 'label' => 'No data on refunds'];
+            }
+        } else {
+            $features[] = ['type' => 'refunds', 'label' => 'No data on refunds'];
+        }
+
+        $features[] = [
+            'type' => 'hold',
+            'label' => $supportsHold ? 'Hold space' : 'Pay now required',
+        ];
+
+        $bags = $detailed ? $this->presentIncludedBaggage($offer) : [];
+        if ($bags === [] && ! $detailed) {
+            // Light scan for list offers that include segment passenger baggages.
+            $bags = $this->presentIncludedBaggage($offer);
+        }
+
+        $hasCarryOn = collect($bags)->contains(fn (array $bag) => ($bag['type'] ?? '') === 'carry_on');
+        $hasChecked = collect($bags)->contains(fn (array $bag) => ($bag['type'] ?? '') === 'checked');
+
+        $features[] = [
+            'type' => 'carry_on',
+            'label' => $hasCarryOn ? 'Includes carry-on bags' : 'Carry-on not included',
+        ];
+        $features[] = [
+            'type' => 'checked',
+            'label' => $hasChecked ? 'Includes checked bags' : 'Checked bags not included',
+        ];
+
+        return $features;
     }
 
     private function presentIncludedBaggage(array $offer): array

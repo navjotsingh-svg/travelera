@@ -17,6 +17,7 @@ Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/airports/suggest', [AirportController::class, 'suggest'])->name('airports.suggest');
 Route::view('/about', 'about')->name('about');
 Route::view('/visa', 'visa')->name('visa');
+Route::get('/contact', [ContactController::class, 'show'])->name('contact');
 Route::post('/contact', [ContactController::class, 'store'])->name('contact.store');
 
 Route::get('/blog', [BlogController::class, 'index'])->name('blogs.index');

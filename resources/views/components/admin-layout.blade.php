@@ -44,6 +44,9 @@
                 <a href="{{ route('admin.abandoned.index') }}" class="{{ request()->routeIs('admin.abandoned.*') ? 'is-active' : '' }}">
                     <span class="admin-nav-ico">⚠</span> Abandoned
                 </a>
+                <a href="{{ route('admin.queries.index') }}" class="{{ request()->routeIs('admin.queries.*') ? 'is-active' : '' }}">
+                    <span class="admin-nav-ico">✉</span> Queries
+                </a>
 
                 <p class="admin-nav-label">Content</p>
                 <a href="{{ route('admin.packages.index') }}" class="{{ request()->routeIs('admin.packages.*') ? 'is-active' : '' }}">

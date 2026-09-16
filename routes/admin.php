@@ -27,6 +27,11 @@ Route::middleware(['auth', 'admin'])
         Route::get('/abandoned-payments', [AbandonedPaymentController::class, 'index'])->name('abandoned.index');
         Route::patch('/abandoned-payments/{checkoutAttempt}', [AbandonedPaymentController::class, 'update'])->name('abandoned.update');
 
+        Route::get('/queries', [\App\Http\Controllers\Admin\QueryController::class, 'index'])->name('queries.index');
+        Route::get('/queries/{query}', [\App\Http\Controllers\Admin\QueryController::class, 'show'])->name('queries.show');
+        Route::patch('/queries/{query}', [\App\Http\Controllers\Admin\QueryController::class, 'update'])->name('queries.update');
+        Route::delete('/queries/{query}', [\App\Http\Controllers\Admin\QueryController::class, 'destroy'])->name('queries.destroy');
+
         Route::resource('packages', AdminPackageController::class)->except(['show']);
 
         Route::resource('blogs', AdminBlogController::class)->except(['show']);

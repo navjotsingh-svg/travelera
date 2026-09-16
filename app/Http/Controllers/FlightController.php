@@ -49,6 +49,25 @@ class FlightController extends Controller
                         adults: $request->integer('adults', 1),
                     );
                     $offers = collect($result['offers']);
+                    session([
+                        'duffel_last_offers' => $offers
+                            ->map(fn (array $offer) => [
+                                'id' => $offer['id'],
+                                'flight_key' => $offer['flight_key'] ?? null,
+                                'airline' => $offer['airline'] ?? null,
+                                'airline_logo' => $offer['airline_logo'] ?? null,
+                                'flight_number' => $offer['flight_number'] ?? null,
+                                'cabin_class' => $offer['cabin_class'] ?? null,
+                                'fare_brand' => $offer['fare_brand'] ?? null,
+                                'total_amount' => $offer['total_amount'] ?? null,
+                                'total_currency' => $offer['total_currency'] ?? null,
+                                'fare_features' => $offer['fare_features'] ?? [],
+                                'supports_hold' => $offer['supports_hold'] ?? false,
+                                'carbon_emissions' => $offer['carbon_emissions'] ?? null,
+                            ])
+                            ->values()
+                            ->all(),
+                    ]);
                     $this->logSearch($request, $fromCode, $toCode, $offers->count(), false);
                 } catch (DuffelException $exception) {
                     $error = $exception->getMessage();
@@ -85,7 +104,44 @@ class FlightController extends Controller
             abort(404, $exception->getMessage());
         }
 
-        return view('flights.offer', compact('flight'));
+        $fareOptions = collect(session('duffel_last_offers', []))
+            ->filter(fn (array $item) => ($item['flight_key'] ?? null) === ($flight['flight_key'] ?? null))
+            ->sortBy(fn (array $item) => (float) ($item['total_amount'] ?? 0))
+            ->values();
+
+        if ($fareOptions->isEmpty()) {
+            $fareOptions = collect([[
+                'id' => $flight['id'],
+                'flight_key' => $flight['flight_key'] ?? null,
+                'airline' => $flight['airline'] ?? null,
+                'airline_logo' => $flight['airline_logo'] ?? null,
+                'flight_number' => $flight['flight_number'] ?? null,
+                'cabin_class' => $flight['cabin_class'] ?? null,
+                'fare_brand' => $flight['fare_brand'] ?? null,
+                'total_amount' => $flight['total_amount'] ?? null,
+                'total_currency' => $flight['total_currency'] ?? null,
+                'fare_features' => $flight['fare_features'] ?? [],
+                'supports_hold' => $flight['supports_hold'] ?? false,
+                'carbon_emissions' => $flight['carbon_emissions'] ?? null,
+            ]]);
+        } else {
+            // Prefer detailed features for the currently opened offer.
+            $fareOptions = $fareOptions->map(function (array $item) use ($flight) {
+                if (($item['id'] ?? null) === $flight['id']) {
+                    $item['fare_features'] = $flight['fare_features'] ?? ($item['fare_features'] ?? []);
+                    $item['fare_brand'] = $flight['fare_brand'] ?? ($item['fare_brand'] ?? null);
+                    $item['supports_hold'] = $flight['supports_hold'] ?? ($item['supports_hold'] ?? false);
+                    $item['carbon_emissions'] = $flight['carbon_emissions'] ?? ($item['carbon_emissions'] ?? null);
+                }
+
+                return $item;
+            });
+        }
+
+        return view('flights.offer', [
+            'flight' => $flight,
+            'fareOptions' => $fareOptions,
+        ]);
     }
 
     public function show(Flight $flight): View

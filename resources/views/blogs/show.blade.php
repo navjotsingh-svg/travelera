@@ -6,8 +6,8 @@
         @if ($blog->excerpt)
             <p class="mt-4 text-lg text-slate-500">{{ $blog->excerpt }}</p>
         @endif
-        @if ($blog->cover_image)
-            <img src="{{ $blog->cover_image }}" alt="" class="mt-8 w-full rounded-2xl object-cover">
+        @if ($blog->coverImageSrc())
+            <img src="{{ $blog->coverImageSrc() }}" alt="" class="mt-8 w-full rounded-2xl object-cover">
         @endif
         <div class="prose prose-slate mt-8 max-w-none whitespace-pre-line text-[15px] leading-7 text-slate-700">{{ $blog->body }}</div>
     </article>

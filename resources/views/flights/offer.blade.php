@@ -1,69 +1,106 @@
-<x-public-layout :title="$flight['airline'].' '.$flight['flight_number']">
-    <div class="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-        <a href="{{ route('flights.index') }}" class="text-sm font-semibold text-[#0033a0]">← All flights</a>
-        <div class="mt-4 overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100">
-            <div class="p-8">
-                <p class="text-sm font-semibold uppercase tracking-widest text-[#0033a0]">Live offer · Duffel</p>
-                <h1 class="mt-2 text-3xl font-extrabold">{{ $flight['origin'] }} to {{ $flight['destination'] }}</h1>
-                <p class="mt-1 text-slate-500">{{ $flight['airline'] }} · {{ $flight['flight_number'] }} · {{ ucfirst(str_replace('_', ' ', (string) $flight['cabin_class'])) }}</p>
+<x-public-layout :title="'Fare options · '.$flight['origin'].' to '.$flight['destination']">
+    @php
+        $selectedId = $flight['id'];
+        $supportsHold = (bool) ($flight['supports_hold'] ?? false);
+    @endphp
 
-                <div class="mt-8 space-y-4">
-                    @foreach ($flight['slices'] ?? [] as $index => $slice)
-                        <div class="rounded-2xl bg-slate-50 p-5">
-                            <p class="text-sm font-semibold text-slate-500">{{ $index === 0 ? 'Outbound' : 'Return' }} · {{ $slice['origin'] }} → {{ $slice['destination'] }} · {{ $slice['duration'] }}</p>
-                            <div class="mt-3 space-y-3">
-                                @foreach ($slice['segments'] as $segment)
-                                    <div class="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                                        <p class="font-semibold">{{ $segment['airline'] }} {{ $segment['flight_number'] }}</p>
-                                        <p class="text-sm text-slate-600">
-                                            {{ optional($segment['departure_at'])->format('D d M H:i') }} {{ $segment['origin'] }}
-                                            →
-                                            {{ optional($segment['arrival_at'])->format('H:i') }} {{ $segment['destination'] }}
-                                        </p>
-                                    </div>
+    <div class="duffel-fare" x-data="{ selected: '{{ $selectedId }}' }">
+        <div class="duffel-fare-inner">
+            <nav class="duffel-crumbs">
+                <a href="{{ route('flights.index') }}">Flights</a>
+                <span>›</span>
+                <a href="{{ route('flights.index', request()->only(['from','to','date','return_date','cabin','adults'])) }}">{{ $flight['origin'] }} to {{ $flight['destination'] }}</a>
+                <span>›</span>
+                <strong>Fare options</strong>
+            </nav>
+
+            <h1 class="duffel-fare-title">
+                Flight to {{ $flight['destination'] }}
+                @if ($flight['departure_at'])
+                    {{ $flight['departure_at']->format('d M Y') }}
+                @endif
+            </h1>
+
+            <div class="duffel-flight-strip">
+                @if (! empty($flight['airline_logo']))
+                    <img src="{{ $flight['airline_logo'] }}" alt="" class="duffel-airline-logo">
+                @else
+                    <span class="duffel-airline-mark">{{ strtoupper(substr($flight['airline'], 0, 1)) }}</span>
+                @endif
+                <div class="duffel-flight-times">
+                    <div>
+                        <strong>{{ optional($flight['departure_at'])->format('H:i') }}</strong>
+                        <span>{{ $flight['origin'] }}</span>
+                    </div>
+                    <div class="duffel-flight-mid">
+                        <span>{{ $flight['duration'] }}</span>
+                        <div class="duffel-flight-line" aria-hidden="true"></div>
+                        <span>{{ $flight['stops'] === 0 ? 'Direct' : $flight['stops'].' stop'.($flight['stops'] > 1 ? 's' : '') }}</span>
+                    </div>
+                    <div class="duffel-flight-end">
+                        <strong>{{ optional($flight['arrival_at'])->format('H:i') }}</strong>
+                        <span>{{ $flight['destination'] }}</span>
+                    </div>
+                </div>
+                <p class="duffel-flight-meta">{{ $flight['airline'] }} · {{ $flight['flight_number'] }}</p>
+            </div>
+
+            <div class="duffel-fare-layout">
+                <div class="duffel-fare-cards">
+                    @foreach ($fareOptions as $option)
+                        <article
+                            class="duffel-fare-card"
+                            :class="{ 'is-selected': selected === '{{ $option['id'] }}' }"
+                            @click="selected = '{{ $option['id'] }}'"
+                        >
+                            <p class="duffel-fare-cabin">{{ strtoupper(str_replace('_', ' ', (string) ($option['cabin_class'] ?? 'economy'))) }}</p>
+                            <h2>{{ $option['fare_brand'] ?? 'Standard' }}</h2>
+                            <ul class="duffel-fare-features">
+                                @foreach (($option['fare_features'] ?? []) as $feature)
+                                    <li data-type="{{ $feature['type'] ?? '' }}">{{ $feature['label'] ?? '' }}</li>
                                 @endforeach
+                            </ul>
+                            <div class="duffel-fare-price">
+                                <span>total amount from</span>
+                                <strong><x-money :amount="$option['total_amount']" :currency="$option['total_currency']" /></strong>
                             </div>
-                        </div>
+                        </article>
                     @endforeach
                 </div>
 
-                @if (! empty($flight['included_baggage']))
-                    <div class="mt-8 rounded-2xl border border-slate-100 bg-slate-50/80 p-5">
-                        <p class="text-sm font-semibold text-slate-500">Baggage included</p>
-                        <div class="mt-3 flex flex-wrap gap-3">
-                            @foreach ($flight['included_baggage'] as $bag)
-                                <div class="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
-                                    <span>{{ ($bag['type'] ?? '') === 'carry_on' ? '🎒' : '🧳' }}</span>
-                                    <span>{{ $bag['quantity'] }}× {{ $bag['label'] }}</span>
-                                </div>
-                            @endforeach
-                        </div>
-                        @if (! empty($flight['bag_services']))
-                            <p class="mt-3 text-sm text-slate-500">Extra bags and seats can be added on the next step.</p>
+                <aside class="duffel-summary">
+                    <h2>Summary</h2>
+                    <div class="duffel-summary-seller">
+                        <span>Sold by</span>
+                        @if (! empty($flight['airline_logo']))
+                            <img src="{{ $flight['airline_logo'] }}" alt="">
                         @endif
+                        <strong>{{ $flight['airline'] }}</strong>
                     </div>
-                @elseif (! empty($flight['bag_services']))
-                    <div class="mt-8 rounded-2xl border border-amber-100 bg-amber-50/70 p-5 text-sm text-amber-900">
-                        No free check-in bag on this fare — you can add baggage before confirming.
-                    </div>
-                @endif
+                    @if (! empty($flight['carbon_emissions']) && is_numeric($flight['carbon_emissions']))
+                        @php
+                            $co2 = (float) $flight['carbon_emissions'];
+                            $co2Kg = $co2 < 50 ? (int) round($co2 * 1000) : (int) round($co2);
+                        @endphp
+                        <p class="duffel-summary-co2">From {{ $co2Kg }}kg CO₂</p>
+                    @endif
 
-                <div class="mt-8 grid gap-6 md:grid-cols-3">
-                    <div class="rounded-2xl bg-slate-50 p-4">
-                        <p class="text-sm text-slate-500">Passengers</p>
-                        <p class="text-xl font-bold">{{ $flight['passenger_count'] }} adult{{ $flight['passenger_count'] > 1 ? 's' : '' }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-slate-50 p-4">
-                        <p class="text-sm text-slate-500">Offer expires</p>
-                        <p class="text-xl font-bold">{{ optional($flight['expires_at'])->format('H:i') ?? 'Soon' }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-slate-50 p-4">
-                        <p class="text-sm text-slate-500">Total</p>
-                        <p class="text-xl font-bold"><x-money :amount="$flight['total_amount']" :currency="$flight['total_currency']" /></p>
-                    </div>
-                </div>
-
-                <a href="{{ route('flights.book', $flight['id']) }}" class="mt-8 inline-flex rounded-full bg-[#0033a0] px-6 py-3 font-semibold text-white hover:bg-[#00287d]">Continue · bags & seats</a>
+                    <template x-for="option in {{ Js::from($fareOptions->values()) }}" :key="option.id">
+                        <div x-show="selected === option.id" x-cloak>
+                            <p class="duffel-summary-total">
+                                <span x-text="option.fare_brand || 'Fare'"></span>
+                                <strong x-text="new Intl.NumberFormat(undefined, { style: 'currency', currency: option.total_currency || 'USD' }).format(Number(option.total_amount || 0))"></strong>
+                            </p>
+                            <a
+                                class="duffel-summary-cta"
+                                :href="`{{ url('/flights/offers') }}/${option.id}/book`"
+                            >
+                                Go to checkout →
+                            </a>
+                        </div>
+                    </template>
+                    <p class="duffel-summary-hint">Select a fare brand, then continue to passenger details.</p>
+                </aside>
             </div>
         </div>
     </div>

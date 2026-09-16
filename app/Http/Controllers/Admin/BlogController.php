@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Blog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -33,6 +34,7 @@ class BlogController extends Controller
         $validated['slug'] = $this->uniqueSlug($validated['title']);
         $validated['is_published'] = $request->boolean('is_published');
         $validated['published_at'] = $validated['is_published'] ? now() : null;
+        $validated['cover_image'] = $this->storeCoverImage($request);
 
         Blog::query()->create($validated);
 
@@ -46,7 +48,7 @@ class BlogController extends Controller
 
     public function update(Request $request, Blog $blog): RedirectResponse
     {
-        $validated = $this->validated($request);
+        $validated = $this->validated($request, $blog);
         $validated['is_published'] = $request->boolean('is_published');
 
         if ($validated['is_published'] && ! $blog->published_at) {
@@ -57,6 +59,18 @@ class BlogController extends Controller
             $validated['published_at'] = null;
         }
 
+        if ($request->hasFile('cover_image')) {
+            $this->deleteStoredImage($blog->cover_image);
+            $validated['cover_image'] = $this->storeCoverImage($request);
+        } else {
+            unset($validated['cover_image']);
+        }
+
+        if ($request->boolean('remove_cover_image') && ! $request->hasFile('cover_image')) {
+            $this->deleteStoredImage($blog->cover_image);
+            $validated['cover_image'] = null;
+        }
+
         $blog->update($validated);
 
         return redirect()->route('admin.blogs.index')->with('status', 'Blog post updated.');
@@ -64,6 +78,7 @@ class BlogController extends Controller
 
     public function destroy(Blog $blog): RedirectResponse
     {
+        $this->deleteStoredImage($blog->cover_image);
         $blog->delete();
 
         return redirect()->route('admin.blogs.index')->with('status', 'Blog post deleted.');
@@ -72,15 +87,54 @@ class BlogController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function validated(Request $request): array
+    private function validated(Request $request, ?Blog $blog = null): array
     {
         return $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'excerpt' => ['nullable', 'string', 'max:500'],
             'body' => ['required', 'string'],
-            'cover_image' => ['nullable', 'string', 'max:500'],
+            'cover_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp,gif', 'max:4096'],
+            'remove_cover_image' => ['sometimes', 'boolean'],
             'is_published' => ['sometimes', 'boolean'],
         ]);
+    }
+
+    private function storeCoverImage(Request $request): ?string
+    {
+        if (! $request->hasFile('cover_image')) {
+            return null;
+        }
+
+        $path = $request->file('cover_image')->store('blogs', 'public');
+
+        return Storage::disk('public')->url($path);
+    }
+
+    private function deleteStoredImage(?string $image): void
+    {
+        if (! $image) {
+            return;
+        }
+
+        if (str_starts_with($image, 'http://') || str_starts_with($image, 'https://') || str_starts_with($image, '//')) {
+            $path = parse_url($image, PHP_URL_PATH) ?: '';
+            if (! str_contains($path, '/storage/')) {
+                return;
+            }
+            $path = str_replace('/storage/', '', $path);
+        } else {
+            $path = str_replace('/storage/', '', $image);
+        }
+
+        $path = ltrim($path, '/');
+
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, strlen('storage/'));
+        }
+
+        if ($path !== '' && Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+        }
     }
 
     private function uniqueSlug(string $title, ?int $ignoreId = null): string

@@ -55,6 +55,9 @@ class FlightBookingController extends Controller
             'flight' => $flight,
             'seatMaps' => $seatMaps,
             'stripeEnabled' => $this->stripe->configured(),
+            'defaultPhone' => filled(auth()->user()?->phone)
+                ? $this->duffel->e164(auth()->user()->phone)
+                : '',
         ]);
     }
 
@@ -79,10 +82,18 @@ class FlightBookingController extends Controller
             'passengers.*.born_on' => ['required', 'date', 'before:today'],
             'passengers.*.email' => ['required', 'email'],
             'passengers.*.phone_number' => ['required', 'string', 'max:30'],
+            'passengers.*.passport_country' => ['nullable', 'string', 'max:80'],
+            'passengers.*.passport_number' => ['nullable', 'string', 'max:40'],
+            'passengers.*.passport_expiry' => ['nullable', 'date', 'after:today'],
+            'payment_choice' => ['required', 'in:pay_now,hold'],
             'services' => ['nullable', 'array'],
             'services.*.id' => ['required_with:services', 'string', 'max:120'],
             'services.*.quantity' => ['required_with:services', 'integer', 'min:1', 'max:9'],
         ]);
+
+        if ($validated['payment_choice'] === 'hold' && empty($flight['supports_hold'])) {
+            return back()->withErrors(['offer' => 'This fare cannot be held. Please pay now to confirm.'])->withInput();
+        }
 
         $passengers = collect($validated['passengers'])
             ->map(function (array $passenger) {
@@ -95,6 +106,7 @@ class FlightBookingController extends Controller
             ->all();
 
         $services = $validated['services'] ?? [];
+        $orderType = $validated['payment_choice'] === 'hold' ? 'hold' : 'instant';
 
         try {
             $quote = $this->duffel->quote($offer, $services);
@@ -108,6 +120,8 @@ class FlightBookingController extends Controller
             'passengers' => $passengers,
             'services' => $services,
             'selected_services' => $quote['selected_services'],
+            'order_type' => $orderType,
+            'payment_choice' => $validated['payment_choice'],
         ];
 
         $booking = Booking::query()->create([
@@ -139,35 +153,29 @@ class FlightBookingController extends Controller
             ->latest('id')
             ->first();
 
+        $attemptData = [
+            'booking_id' => $booking->id,
+            'airline' => $flight['airline'] ?? null,
+            'flight_number' => $flight['flight_number'] ?? null,
+            'origin' => $flight['origin'] ?? null,
+            'destination' => $flight['destination'] ?? null,
+            'amount' => $quote['total_amount'],
+            'currency' => $quote['total_currency'],
+            'payload' => $checkoutPayload,
+            'status' => 'awaiting_payment',
+        ];
+
         if ($attempt) {
-            $attempt->update([
-                'booking_id' => $booking->id,
-                'airline' => $flight['airline'] ?? null,
-                'flight_number' => $flight['flight_number'] ?? null,
-                'origin' => $flight['origin'] ?? null,
-                'destination' => $flight['destination'] ?? null,
-                'amount' => $quote['total_amount'],
-                'currency' => $quote['total_currency'],
-                'payload' => $checkoutPayload,
-                'status' => 'awaiting_payment',
-            ]);
+            $attempt->update($attemptData);
         } else {
-            $attempt = CheckoutAttempt::query()->create([
+            $attempt = CheckoutAttempt::query()->create(array_merge([
                 'user_id' => $request->user()->id,
                 'offer_id' => $offer,
-                'booking_id' => $booking->id,
-                'airline' => $flight['airline'] ?? null,
-                'flight_number' => $flight['flight_number'] ?? null,
-                'origin' => $flight['origin'] ?? null,
-                'destination' => $flight['destination'] ?? null,
-                'amount' => $quote['total_amount'],
-                'currency' => $quote['total_currency'],
-                'payload' => $checkoutPayload,
-                'status' => 'awaiting_payment',
-            ]);
+            ], $attemptData));
         }
 
-        if (! $this->stripe->configured()) {
+        // Hold orders skip Stripe and create a Duffel hold immediately.
+        if ($orderType === 'hold' || ! $this->stripe->configured()) {
             try {
                 $booking = $this->fulfillment->fulfillPaidBooking($booking);
             } catch (DuffelException $exception) {
@@ -176,11 +184,14 @@ class FlightBookingController extends Controller
                 return back()->withErrors(['offer' => $exception->getMessage()])->withInput();
             }
 
+            $message = $orderType === 'hold'
+                ? 'Seat held successfully. Complete payment before the hold expires.'
+                : 'Your Duffel flight is confirmed'.($booking->airline_pnr ? '. Airline PNR: '.$booking->airline_pnr : '.')
+                    .($this->stripe->configured() ? '' : ' (Stripe is disabled — booked without card charge.)');
+
             return redirect()
                 ->route('bookings.show', $booking)
-                ->with('status', 'Your Duffel flight is confirmed'
-                    .($booking->airline_pnr ? '. Airline PNR: '.$booking->airline_pnr : '.')
-                    .' (Stripe is disabled — booked without card charge.)');
+                ->with('status', $message);
         }
 
         try {

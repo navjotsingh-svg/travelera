@@ -180,7 +180,7 @@
 
     <div x-show="tab === 'corporate'" class="booking-body corporate-note" style="display: none;">
         <p>Need a corporate travel desk? Share your company details and we will set up billed trips, approvals and fare deals.</p>
-        <a href="{{ url('/#contact') }}" class="booking-search">Talk to us</a>
+        <a href="{{ route('contact') }}" class="booking-search">Talk to us</a>
     </div>
 
     <a href="{{ url('/#deals') }}" class="booking-deals">Deals and Offers</a>
