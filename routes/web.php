@@ -30,6 +30,14 @@ Route::middleware('auth')->group(function () {
 });
 Route::get('/flights/{flight}', [FlightController::class, 'show'])->name('flights.show');
 
+Route::post('/stripe/webhook', [\App\Http\Controllers\PaymentController::class, 'webhook'])
+    ->name('payments.webhook');
+
+Route::middleware('auth')->group(function () {
+    Route::get('/payments/success', [\App\Http\Controllers\PaymentController::class, 'success'])->name('payments.success');
+    Route::get('/payments/cancel', [\App\Http\Controllers\PaymentController::class, 'cancel'])->name('payments.cancel');
+});
+
 Route::get('/hotels', [HotelController::class, 'index'])->name('hotels.index');
 Route::get('/hotels/{hotel}', [HotelController::class, 'show'])->name('hotels.show');
 

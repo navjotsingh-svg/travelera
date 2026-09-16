@@ -4,17 +4,26 @@ namespace App\Http\Controllers;
 
 use App\Models\Booking;
 use App\Models\Cab;
+use App\Models\CheckoutAttempt;
 use App\Models\Flight;
 use App\Models\Hotel;
 use App\Models\TravelPackage;
+use App\Services\BookingFulfillmentService;
 use App\Services\Duffel\DuffelException;
 use App\Services\Duffel\DuffelFlightService;
+use App\Services\Stripe\StripeException;
+use App\Services\Stripe\StripePaymentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class BookingController extends Controller
 {
+    public function __construct(
+        private readonly StripePaymentService $stripe,
+        private readonly BookingFulfillmentService $fulfillment,
+    ) {}
+
     public function index(Request $request): View
     {
         $bookings = $request->user()
@@ -35,6 +44,7 @@ class BookingController extends Controller
         return view('bookings.create', [
             'bookable' => $bookable,
             'type' => $request->string('type')->toString(),
+            'stripeEnabled' => $this->stripe->configured(),
         ]);
     }
 
@@ -62,6 +72,7 @@ class BookingController extends Controller
         abort_unless($bookable, 404);
 
         $total = $this->calculateTotal($bookable, $validated);
+        $currency = strtoupper((string) config('stripe.currency', 'inr'));
 
         $booking = Booking::query()->create([
             'user_id' => $request->user()->id,
@@ -79,14 +90,50 @@ class BookingController extends Controller
             'distance_km' => $validated['distance_km'] ?? null,
             'cabin_class' => $bookable instanceof Flight ? $bookable->cabin_class : null,
             'total_amount' => $total,
-            'status' => 'confirmed',
-            'payment_status' => 'paid',
+            'currency' => $currency,
+            'status' => 'pending',
+            'payment_status' => 'pending',
             'notes' => $validated['notes'] ?? null,
         ]);
 
-        return redirect()
-            ->route('bookings.show', $booking)
-            ->with('status', 'Your trip is confirmed. Safe travels!');
+        if (! $this->stripe->configured()) {
+            $booking = $this->fulfillment->fulfillPaidBooking($booking);
+
+            return redirect()
+                ->route('bookings.show', $booking)
+                ->with('status', 'Your trip is confirmed. Safe travels!');
+        }
+
+        try {
+            $session = $this->stripe->createCheckoutSession(
+                $booking,
+                route('payments.success', absolute: true).'?session_id={CHECKOUT_SESSION_ID}',
+                route('payments.cancel', absolute: true).'?session_id={CHECKOUT_SESSION_ID}',
+                [
+                    'name' => $booking->title(),
+                    'description' => 'Travelera '.$booking->typeLabel().' booking',
+                ],
+                ['provider' => 'local'],
+            );
+        } catch (StripeException $exception) {
+            $booking->update(['payment_status' => 'failed', 'status' => 'cancelled']);
+
+            return back()->withErrors(['payment' => $exception->getMessage()])->withInput();
+        }
+
+        $booking->update(['stripe_checkout_session_id' => $session->id]);
+
+        CheckoutAttempt::query()->create([
+            'user_id' => $request->user()->id,
+            'booking_id' => $booking->id,
+            'amount' => $booking->total_amount,
+            'currency' => $booking->currency,
+            'stripe_checkout_session_id' => $session->id,
+            'status' => 'awaiting_payment',
+            'payload' => ['type' => $validated['type'], 'id' => $validated['id']],
+        ]);
+
+        return redirect()->away($session->url);
     }
 
     public function show(Request $request, Booking $booking): View

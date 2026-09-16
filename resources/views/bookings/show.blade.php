@@ -26,6 +26,16 @@
                     <dt class="text-sm text-slate-500">Total paid</dt>
                     <dd class="font-semibold"><x-money :amount="$booking->total_amount" :currency="$booking->currency ?? 'INR'" /></dd>
                 </div>
+                <div class="rounded-2xl bg-slate-50 p-4">
+                    <dt class="text-sm text-slate-500">Payment</dt>
+                    <dd class="font-semibold capitalize">{{ $booking->payment_status }}</dd>
+                </div>
+                @if ($booking->stripe_payment_intent_id)
+                    <div class="rounded-2xl bg-slate-50 p-4 md:col-span-2">
+                        <dt class="text-sm text-slate-500">Stripe payment</dt>
+                        <dd class="font-semibold break-all">{{ $booking->stripe_payment_intent_id }}</dd>
+                    </div>
+                @endif
                 @if ($booking->airline_pnr)
                     <div class="rounded-2xl bg-slate-50 p-4">
                         <dt class="text-sm text-slate-500">Airline PNR</dt>
@@ -42,6 +52,34 @@
                     <div class="rounded-2xl bg-slate-50 p-4">
                         <dt class="text-sm text-slate-500">Travel date</dt>
                         <dd class="font-semibold">{{ $booking->travel_date->format('D, d M Y') }}</dd>
+                    </div>
+                @endif
+                @if (! empty($booking->snapshot['selected_services']))
+                    <div class="rounded-2xl bg-slate-50 p-4 md:col-span-2">
+                        <dt class="text-sm text-slate-500">Seats &amp; baggage</dt>
+                        <dd class="mt-2 space-y-1">
+                            @foreach ($booking->snapshot['selected_services'] as $service)
+                                <p class="font-semibold">
+                                    {{ $service['label'] ?? ($service['type'] ?? 'Extra') }}
+                                    @if (! empty($service['designator']))
+                                        · {{ $service['designator'] }}
+                                    @endif
+                                    · qty {{ $service['quantity'] ?? 1 }}
+                                    @if (! empty($service['line_total']))
+                                        · <x-money :amount="$service['line_total']" :currency="$service['total_currency'] ?? ($booking->currency ?? 'INR')" />
+                                    @endif
+                                </p>
+                            @endforeach
+                        </dd>
+                    </div>
+                @elseif (! empty($booking->snapshot['included_baggage']))
+                    <div class="rounded-2xl bg-slate-50 p-4 md:col-span-2">
+                        <dt class="text-sm text-slate-500">Included baggage</dt>
+                        <dd class="mt-2 space-y-1">
+                            @foreach ($booking->snapshot['included_baggage'] as $bag)
+                                <p class="font-semibold">{{ $bag['quantity'] ?? 1 }}× {{ $bag['label'] ?? 'Bag' }}</p>
+                            @endforeach
+                        </dd>
                     </div>
                 @endif
                 @if ($booking->check_in)

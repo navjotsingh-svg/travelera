@@ -18,6 +18,8 @@ class CheckoutAttempt extends Model
         'destination',
         'amount',
         'currency',
+        'stripe_checkout_session_id',
+        'payload',
         'status',
         'completed_at',
     ];
@@ -26,6 +28,7 @@ class CheckoutAttempt extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'payload' => 'array',
             'completed_at' => 'datetime',
         ];
     }

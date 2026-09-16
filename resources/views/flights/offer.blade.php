@@ -27,6 +27,27 @@
                     @endforeach
                 </div>
 
+                @if (! empty($flight['included_baggage']))
+                    <div class="mt-8 rounded-2xl border border-slate-100 bg-slate-50/80 p-5">
+                        <p class="text-sm font-semibold text-slate-500">Baggage included</p>
+                        <div class="mt-3 flex flex-wrap gap-3">
+                            @foreach ($flight['included_baggage'] as $bag)
+                                <div class="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
+                                    <span>{{ ($bag['type'] ?? '') === 'carry_on' ? '🎒' : '🧳' }}</span>
+                                    <span>{{ $bag['quantity'] }}× {{ $bag['label'] }}</span>
+                                </div>
+                            @endforeach
+                        </div>
+                        @if (! empty($flight['bag_services']))
+                            <p class="mt-3 text-sm text-slate-500">Extra bags and seats can be added on the next step.</p>
+                        @endif
+                    </div>
+                @elseif (! empty($flight['bag_services']))
+                    <div class="mt-8 rounded-2xl border border-amber-100 bg-amber-50/70 p-5 text-sm text-amber-900">
+                        No free check-in bag on this fare — you can add baggage before confirming.
+                    </div>
+                @endif
+
                 <div class="mt-8 grid gap-6 md:grid-cols-3">
                     <div class="rounded-2xl bg-slate-50 p-4">
                         <p class="text-sm text-slate-500">Passengers</p>
@@ -42,7 +63,7 @@
                     </div>
                 </div>
 
-                <a href="{{ route('flights.book', $flight['id']) }}" class="mt-8 inline-flex rounded-full bg-[#0033a0] px-6 py-3 font-semibold text-white hover:bg-[#00287d]">Continue to book</a>
+                <a href="{{ route('flights.book', $flight['id']) }}" class="mt-8 inline-flex rounded-full bg-[#0033a0] px-6 py-3 font-semibold text-white hover:bg-[#00287d]">Continue · bags & seats</a>
             </div>
         </div>
     </div>

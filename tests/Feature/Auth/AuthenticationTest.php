@@ -64,6 +64,21 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_users_can_authenticate_with_golden_otp(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+
+        $this->post('/login', ['email' => $user->email])
+            ->assertRedirect(route('otp.prompt'));
+
+        $this->post('/otp', ['otp' => '652160'])
+            ->assertRedirect(route('dashboard', absolute: false));
+
+        $this->assertAuthenticatedAs($user);
+    }
+
     public function test_users_can_logout(): void
     {
         $user = User::factory()->create();

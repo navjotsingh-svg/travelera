@@ -3,7 +3,7 @@
         <div class="admin-stat"><span>All</span><strong>{{ number_format($totals['all']) }}</strong></div>
         <div class="admin-stat"><span>Today</span><strong>{{ number_format($totals['today']) }}</strong></div>
         <div class="admin-stat"><span>Last 7 days</span><strong>{{ number_format($totals['week']) }}</strong></div>
-        <div class="admin-stat"><span>Errors</span><strong>{{ number_format($totals['errors']) }}</strong></div>
+        <div class="admin-stat admin-stat-warn"><span>Errors</span><strong>{{ number_format($totals['errors']) }}</strong></div>
     </div>
 
     <form method="GET" class="admin-filters">
@@ -25,7 +25,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach ($searches as $search)
+                    @forelse ($searches as $search)
                         <tr>
                             <td>{{ $search->created_at->format('d M H:i') }}</td>
                             <td>{{ $search->user?->email ?? 'Guest' }}</td>
@@ -34,7 +34,9 @@
                             <td>{{ $search->adults }}</td>
                             <td>{{ $search->results_count }}{{ $search->had_error ? ' · error' : '' }}</td>
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr><td colspan="6" class="admin-empty">No searches logged yet.</td></tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>

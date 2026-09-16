@@ -5,15 +5,22 @@ namespace App\Http\Controllers;
 use App\Models\Booking;
 use App\Models\CheckoutAttempt;
 use App\Models\Flight;
+use App\Services\BookingFulfillmentService;
 use App\Services\Duffel\DuffelException;
 use App\Services\Duffel\DuffelFlightService;
+use App\Services\Stripe\StripeException;
+use App\Services\Stripe\StripePaymentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class FlightBookingController extends Controller
 {
-    public function __construct(private readonly DuffelFlightService $duffel) {}
+    public function __construct(
+        private readonly DuffelFlightService $duffel,
+        private readonly StripePaymentService $stripe,
+        private readonly BookingFulfillmentService $fulfillment,
+    ) {}
 
     public function create(string $offer): View|RedirectResponse
     {
@@ -21,6 +28,7 @@ class FlightBookingController extends Controller
 
         try {
             $flight = $this->duffel->offer($offer);
+            $seatMaps = $this->duffel->seatMaps($offer);
         } catch (DuffelException $exception) {
             return redirect()
                 ->route('flights.index')
@@ -43,7 +51,11 @@ class FlightBookingController extends Controller
             ]
         );
 
-        return view('flights.book', compact('flight'));
+        return view('flights.book', [
+            'flight' => $flight,
+            'seatMaps' => $seatMaps,
+            'stripeEnabled' => $this->stripe->configured(),
+        ]);
     }
 
     public function store(Request $request, string $offer): RedirectResponse
@@ -67,6 +79,9 @@ class FlightBookingController extends Controller
             'passengers.*.born_on' => ['required', 'date', 'before:today'],
             'passengers.*.email' => ['required', 'email'],
             'passengers.*.phone_number' => ['required', 'string', 'max:30'],
+            'services' => ['nullable', 'array'],
+            'services.*.id' => ['required_with:services', 'string', 'max:120'],
+            'services.*.quantity' => ['required_with:services', 'integer', 'min:1', 'max:9'],
         ]);
 
         $passengers = collect($validated['passengers'])
@@ -79,20 +94,21 @@ class FlightBookingController extends Controller
             })
             ->all();
 
-        try {
-            $order = $this->duffel->book($offer, $passengers);
-        } catch (DuffelException $exception) {
-            CheckoutAttempt::query()
-                ->where('user_id', $request->user()->id)
-                ->where('offer_id', $offer)
-                ->where('status', 'started')
-                ->update(['status' => 'abandoned']);
+        $services = $validated['services'] ?? [];
 
+        try {
+            $quote = $this->duffel->quote($offer, $services);
+        } catch (DuffelException $exception) {
             return back()->withErrors(['offer' => $exception->getMessage()])->withInput();
         }
 
         $lead = $passengers[0];
         $localFlight = $this->storeLocalFlight($flight);
+        $checkoutPayload = [
+            'passengers' => $passengers,
+            'services' => $services,
+            'selected_services' => $quote['selected_services'],
+        ];
 
         $booking = Booking::query()->create([
             'user_id' => $request->user()->id,
@@ -100,34 +116,102 @@ class FlightBookingController extends Controller
             'bookable_id' => $localFlight->id,
             'provider' => 'duffel',
             'duffel_offer_id' => $offer,
-            'duffel_order_id' => $order['id'] ?? null,
-            'airline_pnr' => $order['booking_reference'] ?? null,
             'guest_name' => $lead['given_name'].' '.$lead['family_name'],
             'guest_email' => $lead['email'],
             'guest_phone' => $lead['phone_number'],
             'travelers' => $passengerCount,
             'travel_date' => optional($flight['departure_at'])?->toDateString(),
             'cabin_class' => $flight['cabin_class'],
-            'total_amount' => $order['total_amount'] ?? $flight['total_amount'],
-            'currency' => $order['total_currency'] ?? $flight['total_currency'],
-            'status' => 'confirmed',
-            'payment_status' => 'paid',
-            'snapshot' => $this->duffel->snapshotFromOffer($flight),
+            'total_amount' => $quote['total_amount'],
+            'currency' => $quote['total_currency'],
+            'status' => 'pending',
+            'payment_status' => 'pending',
+            'snapshot' => array_merge(
+                $this->duffel->snapshotFromOffer($flight, $quote['selected_services']),
+                ['checkout' => $checkoutPayload]
+            ),
         ]);
 
-        CheckoutAttempt::query()
+        $attempt = CheckoutAttempt::query()
             ->where('user_id', $request->user()->id)
             ->where('offer_id', $offer)
-            ->where('status', 'started')
-            ->update([
-                'status' => 'completed',
-                'booking_id' => $booking->id,
-                'completed_at' => now(),
-            ]);
+            ->whereIn('status', ['started', 'awaiting_payment'])
+            ->latest('id')
+            ->first();
 
-        return redirect()
-            ->route('bookings.show', $booking)
-            ->with('status', 'Your Duffel flight is confirmed'.(! empty($order['booking_reference']) ? '. Airline PNR: '.$order['booking_reference'] : '.'));
+        if ($attempt) {
+            $attempt->update([
+                'booking_id' => $booking->id,
+                'airline' => $flight['airline'] ?? null,
+                'flight_number' => $flight['flight_number'] ?? null,
+                'origin' => $flight['origin'] ?? null,
+                'destination' => $flight['destination'] ?? null,
+                'amount' => $quote['total_amount'],
+                'currency' => $quote['total_currency'],
+                'payload' => $checkoutPayload,
+                'status' => 'awaiting_payment',
+            ]);
+        } else {
+            $attempt = CheckoutAttempt::query()->create([
+                'user_id' => $request->user()->id,
+                'offer_id' => $offer,
+                'booking_id' => $booking->id,
+                'airline' => $flight['airline'] ?? null,
+                'flight_number' => $flight['flight_number'] ?? null,
+                'origin' => $flight['origin'] ?? null,
+                'destination' => $flight['destination'] ?? null,
+                'amount' => $quote['total_amount'],
+                'currency' => $quote['total_currency'],
+                'payload' => $checkoutPayload,
+                'status' => 'awaiting_payment',
+            ]);
+        }
+
+        if (! $this->stripe->configured()) {
+            try {
+                $booking = $this->fulfillment->fulfillPaidBooking($booking);
+            } catch (DuffelException $exception) {
+                $attempt->update(['status' => 'abandoned']);
+
+                return back()->withErrors(['offer' => $exception->getMessage()])->withInput();
+            }
+
+            return redirect()
+                ->route('bookings.show', $booking)
+                ->with('status', 'Your Duffel flight is confirmed'
+                    .($booking->airline_pnr ? '. Airline PNR: '.$booking->airline_pnr : '.')
+                    .' (Stripe is disabled — booked without card charge.)');
+        }
+
+        try {
+            $session = $this->stripe->createCheckoutSession(
+                $booking,
+                route('payments.success', absolute: true).'?session_id={CHECKOUT_SESSION_ID}',
+                route('payments.cancel', absolute: true).'?session_id={CHECKOUT_SESSION_ID}',
+                [
+                    'name' => $flight['airline'].' '.$flight['flight_number'],
+                    'description' => $flight['origin'].' → '.$flight['destination'],
+                ],
+                [
+                    'offer_id' => $offer,
+                    'provider' => 'duffel',
+                ],
+            );
+        } catch (StripeException $exception) {
+            $booking->update(['payment_status' => 'failed', 'status' => 'cancelled']);
+            $attempt->update(['status' => 'abandoned']);
+
+            return back()->withErrors(['offer' => $exception->getMessage()])->withInput();
+        }
+
+        $booking->update(['stripe_checkout_session_id' => $session->id]);
+        $attempt->update([
+            'stripe_checkout_session_id' => $session->id,
+            'booking_id' => $booking->id,
+            'status' => 'awaiting_payment',
+        ]);
+
+        return redirect()->away($session->url);
     }
 
     private function storeLocalFlight(array $offer): Flight

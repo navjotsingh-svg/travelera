@@ -96,7 +96,12 @@
                 <textarea name="notes" rows="3" class="mt-1 w-full rounded-2xl border-slate-200">{{ old('notes') }}</textarea>
             </div>
 
-            <button class="w-full rounded-full bg-teal-600 py-3 font-semibold text-white hover:bg-teal-500">Confirm booking</button>
+            <button class="w-full rounded-full bg-teal-600 py-3 font-semibold text-white hover:bg-teal-500">
+                {{ ! empty($stripeEnabled) ? 'Pay securely with Stripe' : 'Confirm booking' }}
+            </button>
+            @if (! empty($stripeEnabled))
+                <p class="text-center text-xs text-slate-500">Card payment is processed on Stripe’s secure checkout.</p>
+            @endif
         </form>
     </div>
 </x-public-layout>

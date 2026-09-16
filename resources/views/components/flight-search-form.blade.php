@@ -6,7 +6,7 @@
 <form action="{{ route('flights.index') }}" method="GET" x-data="flightSearch" {{ $attributes }}>
     <div @class([
         'search-bar flight-listing-search',
-        'rounded-[22px] border border-slate-100 bg-white' => $framed,
+        'is-framed' => $framed,
     ])>
         <div class="flight-listing-route">
             <x-airport-input

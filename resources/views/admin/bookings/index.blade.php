@@ -31,7 +31,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach ($bookings as $booking)
+                    @forelse ($bookings as $booking)
                         <tr>
                             <td>{{ $booking->booking_reference }}</td>
                             <td>
@@ -39,12 +39,14 @@
                                 <div class="admin-muted">{{ $booking->guest_email }}</div>
                             </td>
                             <td>{{ $booking->typeLabel() }}</td>
-                            <td><span class="admin-badge">{{ $booking->status }}</span></td>
-                            <td><span class="admin-badge">{{ $booking->payment_status }}</span></td>
+                            <td><span class="admin-badge admin-badge-{{ $booking->status }}">{{ $booking->status }}</span></td>
+                            <td><span class="admin-badge admin-badge-{{ $booking->payment_status }}">{{ $booking->payment_status }}</span></td>
                             <td>{{ $booking->currency }} {{ number_format((float) $booking->total_amount, 0) }}</td>
                             <td><a href="{{ route('admin.bookings.show', $booking) }}">Manage</a></td>
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr><td colspan="7" class="admin-empty">No bookings found.</td></tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>

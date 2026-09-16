@@ -18,7 +18,7 @@
         <div class="grid gap-6 md:grid-cols-2">
             @forelse ($packages as $package)
                 <a href="{{ route('packages.show', $package) }}" class="flex overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100">
-                    <img src="{{ $package->image }}" alt="{{ $package->title }}" class="h-44 w-44 object-cover">
+                    <img src="{{ $package->imageSrc() }}" alt="{{ $package->title }}" class="h-44 w-44 object-cover">
                     <div class="flex flex-1 flex-col justify-between p-5">
                         <div>
                             <p class="text-sm text-teal-700">{{ $package->destination->city }}, {{ $package->destination->country }}</p>

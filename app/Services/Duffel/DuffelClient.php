@@ -44,9 +44,20 @@ class DuffelClient
         ]);
     }
 
-    public function getOffer(string $offerId): array
+    public function getOffer(string $offerId, bool $returnAvailableServices = false): array
     {
-        return $this->request('get', '/air/offers/'.$offerId);
+        return $this->request('get', '/air/offers/'.$offerId, [
+            'query' => $returnAvailableServices
+                ? ['return_available_services' => 'true']
+                : [],
+        ]);
+    }
+
+    public function getSeatMaps(string $offerId): array
+    {
+        return $this->request('get', '/air/seat_maps', [
+            'query' => ['offer_id' => $offerId],
+        ]);
     }
 
     public function suggestPlaces(string $query): array

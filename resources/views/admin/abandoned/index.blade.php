@@ -1,7 +1,7 @@
 <x-admin-layout title="Abandoned payments">
-    <div class="admin-panel-head mb-4">
-        <p class="admin-muted">{{ $count }} abandoned checkout{{ $count === 1 ? '' : 's' }} (started 30+ minutes ago, not completed).</p>
-        <div class="admin-filters" style="margin:0">
+    <div class="admin-toolbar">
+        <p class="admin-muted" style="margin:0">{{ $count }} abandoned checkout{{ $count === 1 ? '' : 's' }} (started 30+ minutes ago, not completed).</p>
+        <div class="admin-actions">
             <a class="admin-btn-secondary {{ ($filter ?? '') !== 'all' ? 'is-active' : '' }}" href="{{ route('admin.abandoned.index') }}">Abandoned</a>
             <a class="admin-btn-secondary {{ ($filter ?? '') === 'all' ? 'is-active' : '' }}" href="{{ route('admin.abandoned.index', ['filter' => 'all']) }}">All open</a>
         </div>
@@ -26,7 +26,7 @@
                             <td>{{ $attempt->user?->email ?? 'Guest' }}</td>
                             <td>{{ $attempt->title() }}</td>
                             <td>{{ $attempt->currency }} {{ number_format((float) $attempt->amount, 0) }}</td>
-                            <td><span class="admin-badge">{{ $attempt->status }}</span></td>
+                            <td><span class="admin-badge admin-badge-{{ $attempt->status }}">{{ $attempt->status }}</span></td>
                             <td>{{ $attempt->created_at->diffForHumans() }}</td>
                             <td>
                                 <form method="POST" action="{{ route('admin.abandoned.update', $attempt) }}" class="admin-inline-form">
@@ -42,7 +42,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6">No abandoned payments found.</td></tr>
+                        <tr><td colspan="6" class="admin-empty">No abandoned payments found.</td></tr>
                     @endforelse
                 </tbody>
             </table>

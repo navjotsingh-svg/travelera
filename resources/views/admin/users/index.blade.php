@@ -18,16 +18,18 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach ($users as $user)
+                    @forelse ($users as $user)
                         <tr>
                             <td>{{ $user->name }}</td>
                             <td>{{ $user->email }}</td>
                             <td>{{ $user->phone ?: '—' }}</td>
                             <td>{{ $user->bookings_count }}</td>
-                            <td>{{ $user->is_admin ? 'Admin' : 'User' }}</td>
+                            <td><span class="admin-badge {{ $user->is_admin ? 'admin-badge-paid' : '' }}">{{ $user->is_admin ? 'Admin' : 'User' }}</span></td>
                             <td><a href="{{ route('admin.users.show', $user) }}">View</a></td>
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr><td colspan="6" class="admin-empty">No users found.</td></tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>

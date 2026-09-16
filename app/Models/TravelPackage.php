@@ -43,4 +43,19 @@ class TravelPackage extends Model
     {
         return $this->morphMany(Booking::class, 'bookable');
     }
+
+    public function imageSrc(): string
+    {
+        $image = (string) $this->image;
+
+        if ($image === '') {
+            return '';
+        }
+
+        if (str_starts_with($image, 'http://') || str_starts_with($image, 'https://') || str_starts_with($image, '//')) {
+            return $image;
+        }
+
+        return asset(ltrim($image, '/'));
+    }
 }

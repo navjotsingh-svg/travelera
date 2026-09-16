@@ -1,6 +1,6 @@
 <x-admin-layout title="Blogs">
-    <div class="admin-panel-head mb-4">
-        <h2 class="admin-panel-title" style="margin:0">Content / blog posts</h2>
+    <div class="admin-toolbar">
+        <h2 class="admin-panel-title">Content / blog posts</h2>
         <a href="{{ route('admin.blogs.create') }}" class="admin-btn">New post</a>
     </div>
 
@@ -17,11 +17,11 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach ($blogs as $blog)
+                    @forelse ($blogs as $blog)
                         <tr>
                             <td>{{ $blog->title }}</td>
                             <td>{{ $blog->author?->name ?? '—' }}</td>
-                            <td>{{ $blog->is_published ? 'Published' : 'Draft' }}</td>
+                            <td><span class="admin-badge {{ $blog->is_published ? 'admin-badge-paid' : 'admin-badge-pending' }}">{{ $blog->is_published ? 'Published' : 'Draft' }}</span></td>
                             <td>{{ optional($blog->published_at)->format('d M Y') ?? '—' }}</td>
                             <td class="admin-actions">
                                 <a href="{{ route('admin.blogs.edit', $blog) }}">Edit</a>
@@ -35,7 +35,9 @@
                                 </form>
                             </td>
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr><td colspan="5" class="admin-empty">No blog posts yet.</td></tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>

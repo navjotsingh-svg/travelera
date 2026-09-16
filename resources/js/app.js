@@ -40,10 +40,14 @@ document.addEventListener('alpine:init', () => {
         },
 
         select(item) {
-            const city = String(item.city || item.name || '').split(',')[0].trim();
-            this.query = city && item.code ? `${city}, ${item.code}` : (item.name || item.code);
-            this.hintText = item.name || item.city || '';
-            this.code = item.code;
+            const city = String(item.city || '').split(',')[0].trim();
+            const name = String(item.name || '').trim();
+            const code = String(item.code || '').trim();
+            const label = city || name;
+
+            this.query = label && code ? `${label} (${code})` : (label || code);
+            this.hintText = name && city && name !== city ? `${name}` : (name || city || '');
+            this.code = code;
             this.open = false;
             this.suggestions = [];
         },
@@ -129,6 +133,186 @@ document.addEventListener('alpine:init', () => {
             to.open = false;
         },
     }));
+
+    Alpine.data('flightBookExtras', (config = {}) => {
+        const bagQty = {};
+        (config.oldServices || []).forEach((service) => {
+            if (! service?.id) {
+                return;
+            }
+
+            const bag = (config.bagServices || []).find((item) => item.id === service.id);
+            if (bag) {
+                bagQty[service.id] = Number(service.quantity || 0);
+            }
+        });
+
+        return {
+            bagsOpen: false,
+            seatsOpen: false,
+            bagServices: config.bagServices || [],
+            seatMaps: config.seatMaps || [],
+            passengers: config.passengers || [],
+            bagQty,
+            seatByKey: {},
+            activePassengerIndex: 0,
+            activeMapIndex: 0,
+            baseAmount: Number(config.baseAmount || 0),
+            currency: config.currency || 'USD',
+
+            openSeats() {
+                this.seatsOpen = true;
+                this.activeMapIndex = 0;
+            },
+
+            activeMap() {
+                return this.seatMaps[this.activeMapIndex] || null;
+            },
+
+            activePassenger() {
+                return this.passengers[this.activePassengerIndex] || null;
+            },
+
+            activePassengerLabel() {
+                const passenger = this.activePassenger();
+                return passenger ? `Choosing for ${passenger.label}` : 'Choose a seat';
+            },
+
+            changeBag(id, delta) {
+                const service = this.bagServices.find((item) => item.id === id);
+                if (! service) {
+                    return;
+                }
+
+                const next = Math.max(0, Math.min(service.maximum_quantity, (this.bagQty[id] || 0) + delta));
+                this.bagQty = { ...this.bagQty, [id]: next };
+            },
+
+            selectedBags() {
+                return this.bagServices
+                    .filter((service) => (this.bagQty[service.id] || 0) > 0)
+                    .map((service) => ({
+                        id: service.id,
+                        label: service.description || service.label,
+                        quantity: this.bagQty[service.id],
+                        amount: Number(service.total_amount) * this.bagQty[service.id],
+                    }));
+            },
+
+            seatKey(mapId, passengerId) {
+                return `${mapId || 'map'}::${passengerId}`;
+            },
+
+            serviceForPassenger(el) {
+                const passenger = this.activePassenger();
+                if (! passenger || ! el?.available_services?.length) {
+                    return null;
+                }
+
+                return el.available_services.find((service) => service.passenger_id === passenger.id)
+                    || el.available_services[0]
+                    || null;
+            },
+
+            pickSeat(el) {
+                const map = this.activeMap();
+                const passenger = this.activePassenger();
+                const service = this.serviceForPassenger(el);
+                if (! map || ! passenger || ! service) {
+                    return;
+                }
+
+                const key = this.seatKey(map.id || this.activeMapIndex, passenger.id);
+                const next = { ...this.seatByKey };
+
+                Object.keys(next).forEach((existingKey) => {
+                    if (next[existingKey]?.id === service.id) {
+                        delete next[existingKey];
+                    }
+                });
+
+                if (next[key]?.id === service.id) {
+                    delete next[key];
+                } else {
+                    next[key] = {
+                        id: service.id,
+                        designator: el.designator,
+                        amount: Number(service.total_amount || 0),
+                        passengerLabel: passenger.label,
+                        passengerId: passenger.id,
+                        mapId: map.id || this.activeMapIndex,
+                    };
+                }
+
+                this.seatByKey = next;
+            },
+
+            seatClass(el) {
+                if (el.type === 'aisle') {
+                    return 'is-aisle';
+                }
+                if (el.type !== 'seat') {
+                    return 'is-fixture';
+                }
+                if (! el.available || ! this.serviceForPassenger(el)) {
+                    return 'is-taken';
+                }
+
+                const map = this.activeMap();
+                const passenger = this.activePassenger();
+                const service = this.serviceForPassenger(el);
+                const key = this.seatKey(map?.id || this.activeMapIndex, passenger?.id);
+                if (service && this.seatByKey[key]?.id === service.id) {
+                    return 'is-selected';
+                }
+                if (Object.values(this.seatByKey).some((seat) => seat.id === service?.id)) {
+                    return 'is-taken';
+                }
+
+                return Number(service?.total_amount || 0) > 0 ? 'is-paid' : 'is-free';
+            },
+
+            selectedSeats() {
+                return Object.values(this.seatByKey);
+            },
+
+            selectedServices() {
+                const bags = Object.entries(this.bagQty)
+                    .filter(([, qty]) => qty > 0)
+                    .map(([id, quantity]) => ({ id, quantity }));
+                const seats = this.selectedSeats().map((seat) => ({ id: seat.id, quantity: 1 }));
+
+                return [...bags, ...seats];
+            },
+
+            extrasTotal() {
+                const bags = this.selectedBags().reduce((sum, bag) => sum + bag.amount, 0);
+                const seats = this.selectedSeats().reduce((sum, seat) => sum + Number(seat.amount || 0), 0);
+
+                return bags + seats;
+            },
+
+            grandTotal() {
+                return this.baseAmount + this.extrasTotal();
+            },
+
+            formatMoney(amount) {
+                try {
+                    return new Intl.NumberFormat(undefined, {
+                        style: 'currency',
+                        currency: this.currency,
+                        maximumFractionDigits: 2,
+                    }).format(Number(amount || 0));
+                } catch (e) {
+                    return `${this.currency} ${Number(amount || 0).toFixed(2)}`;
+                }
+            },
+
+            syncServices() {
+                return true;
+            },
+        };
+    });
 });
 
 window.Alpine = Alpine;

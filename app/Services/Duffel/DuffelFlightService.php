@@ -162,12 +162,45 @@ class DuffelFlightService
 
     public function offer(string $offerId): array
     {
-        return $this->presentOffer($this->client->getOffer($offerId), detailed: true);
+        return $this->presentOffer($this->client->getOffer($offerId, returnAvailableServices: true), detailed: true);
     }
 
-    public function book(string $offerId, array $passengers): array
+    public function seatMaps(string $offerId): array
     {
-        $offer = $this->client->getOffer($offerId);
+        try {
+            $maps = $this->client->getSeatMaps($offerId);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return collect(is_array($maps) ? $maps : [])
+            ->map(fn (array $map) => $this->presentSeatMap($map))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    public function quote(string $offerId, array $services = []): array
+    {
+        $offer = $this->client->getOffer($offerId, returnAvailableServices: true);
+        $selectedServices = $this->normalizeSelectedServices($offer, $services);
+        $totalAmount = $this->sumAmounts(
+            (string) ($offer['total_amount'] ?? '0'),
+            collect($selectedServices)->sum(fn (array $service) => (float) $service['line_total'])
+        );
+
+        return [
+            'offer' => $offer,
+            'selected_services' => $selectedServices,
+            'total_amount' => $totalAmount,
+            'total_currency' => $offer['total_currency'] ?? 'USD',
+        ];
+    }
+
+    public function book(string $offerId, array $passengers, array $services = []): array
+    {
+        $offer = $this->client->getOffer($offerId, returnAvailableServices: true);
+        $selectedServices = $this->normalizeSelectedServices($offer, $services);
 
         $orderPassengers = [];
         foreach ($offer['passengers'] ?? [] as $index => $offerPassenger) {
@@ -184,19 +217,40 @@ class DuffelFlightService
             ];
         }
 
-        return $this->client->createOrder([
+        $paymentAmount = $this->sumAmounts(
+            (string) ($offer['total_amount'] ?? '0'),
+            collect($selectedServices)->sum(fn (array $service) => (float) $service['line_total'])
+        );
+
+        $payload = [
             'type' => 'instant',
             'selected_offers' => [$offerId],
             'passengers' => $orderPassengers,
             'payments' => [[
                 'type' => config('duffel.payment_type', 'balance'),
-                'amount' => $offer['total_amount'],
-                'currency' => $offer['total_currency'],
+                'amount' => $paymentAmount,
+                'currency' => $offer['total_currency'] ?? 'USD',
             ]],
             'metadata' => [
                 'source' => 'travelera',
             ],
-        ]);
+        ];
+
+        if ($selectedServices !== []) {
+            $payload['services'] = collect($selectedServices)
+                ->map(fn (array $service) => [
+                    'id' => $service['id'],
+                    'quantity' => $service['quantity'],
+                ])
+                ->values()
+                ->all();
+        }
+
+        $order = $this->client->createOrder($payload);
+        $order['_selected_services'] = $selectedServices;
+        $order['_charged_amount'] = $paymentAmount;
+
+        return $order;
     }
 
     public function cancelOrder(string $orderId): array
@@ -244,6 +298,7 @@ class DuffelFlightService
                     'duration' => $this->formatDuration($slice['duration'] ?? null),
                     'segments' => collect($slice['segments'] ?? [])->map(function (array $segment) {
                         return [
+                            'id' => $segment['id'] ?? null,
                             'airline' => $segment['operating_carrier']['name'] ?? ($segment['marketing_carrier']['name'] ?? ''),
                             'flight_number' => $this->flightNumber($segment),
                             'origin' => $segment['origin']['iata_code'] ?? '',
@@ -253,18 +308,31 @@ class DuffelFlightService
                             'departure_at' => isset($segment['departing_at']) ? Carbon::parse($segment['departing_at']) : null,
                             'arrival_at' => isset($segment['arriving_at']) ? Carbon::parse($segment['arriving_at']) : null,
                             'duration' => $this->formatDuration($segment['duration'] ?? null),
+                            'passengers' => collect($segment['passengers'] ?? [])->map(function (array $passenger) {
+                                return [
+                                    'passenger_id' => $passenger['passenger_id'] ?? null,
+                                    'cabin_class' => $passenger['cabin_class'] ?? null,
+                                    'baggages' => collect($passenger['baggages'] ?? [])->map(fn (array $bag) => [
+                                        'type' => $bag['type'] ?? 'checked',
+                                        'quantity' => (int) ($bag['quantity'] ?? 0),
+                                    ])->all(),
+                                ];
+                            })->all(),
                         ];
                     })->all(),
                 ];
             })->all();
             $presented['conditions'] = $offer['conditions'] ?? [];
+            $presented['included_baggage'] = $this->presentIncludedBaggage($offer);
+            $presented['bag_services'] = $this->presentBagServices($offer);
+            $presented['available_services'] = $offer['available_services'] ?? [];
             $presented['raw'] = $offer;
         }
 
         return $presented;
     }
 
-    public function snapshotFromOffer(array $offer): array
+    public function snapshotFromOffer(array $offer, array $selectedServices = []): array
     {
         return [
             'airline' => $offer['airline'],
@@ -278,6 +346,8 @@ class DuffelFlightService
             'stops' => $offer['stops'],
             'is_return' => $offer['is_return'],
             'slices' => $offer['slices'] ?? [],
+            'included_baggage' => $offer['included_baggage'] ?? [],
+            'selected_services' => $selectedServices,
         ];
     }
 
@@ -299,6 +369,214 @@ class DuffelFlightService
         }
 
         return $digits !== '' ? '+'.$digits : '+910000000000';
+    }
+
+    private function presentIncludedBaggage(array $offer): array
+    {
+        $bags = [];
+
+        foreach ($offer['slices'] ?? [] as $sliceIndex => $slice) {
+            foreach ($slice['segments'] ?? [] as $segment) {
+                foreach ($segment['passengers'] ?? [] as $passenger) {
+                    foreach ($passenger['baggages'] ?? [] as $bag) {
+                        $type = (string) ($bag['type'] ?? 'checked');
+                        $quantity = (int) ($bag['quantity'] ?? 0);
+                        if ($quantity < 1) {
+                            continue;
+                        }
+
+                        $key = $type;
+                        if (! isset($bags[$key])) {
+                            $bags[$key] = [
+                                'type' => $type,
+                                'label' => $this->baggageLabel($type),
+                                'quantity' => $quantity,
+                                'slice_indexes' => [],
+                            ];
+                        } else {
+                            $bags[$key]['quantity'] = max($bags[$key]['quantity'], $quantity);
+                        }
+
+                        if (! in_array($sliceIndex, $bags[$key]['slice_indexes'], true)) {
+                            $bags[$key]['slice_indexes'][] = $sliceIndex;
+                        }
+                    }
+                }
+            }
+        }
+
+        return array_values($bags);
+    }
+
+    private function presentBagServices(array $offer): array
+    {
+        return collect($offer['available_services'] ?? [])
+            ->filter(fn (array $service) => ($service['type'] ?? '') === 'baggage')
+            ->map(function (array $service) {
+                $meta = $service['metadata'] ?? [];
+                $bagType = $meta['type'] ?? 'checked';
+                $weight = $meta['maximum_weight_kg'] ?? null;
+
+                return [
+                    'id' => $service['id'],
+                    'type' => 'baggage',
+                    'bag_type' => $bagType,
+                    'label' => $this->baggageLabel((string) $bagType),
+                    'weight_kg' => $weight,
+                    'description' => $weight
+                        ? $this->baggageLabel((string) $bagType).' · up to '.$weight.' kg'
+                        : $this->baggageLabel((string) $bagType),
+                    'total_amount' => (string) ($service['total_amount'] ?? '0'),
+                    'total_currency' => $service['total_currency'] ?? ($offer['total_currency'] ?? 'USD'),
+                    'maximum_quantity' => max(1, (int) ($service['maximum_quantity'] ?? 1)),
+                    'passenger_ids' => $service['passenger_ids'] ?? [],
+                    'segment_ids' => $service['segment_ids'] ?? [],
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function presentSeatMap(array $map): ?array
+    {
+        $cabins = collect($map['cabins'] ?? [])->map(function (array $cabin) {
+            $rows = collect($cabin['rows'] ?? [])->map(function (array $row) {
+                $elements = [];
+                foreach ($row['sections'] ?? [] as $sectionIndex => $section) {
+                    if ($sectionIndex > 0) {
+                        $elements[] = ['type' => 'aisle', 'designator' => null];
+                    }
+                    foreach ($section['elements'] ?? [] as $element) {
+                        $services = collect($element['available_services'] ?? [])->map(fn (array $service) => [
+                            'id' => $service['id'],
+                            'passenger_id' => $service['passenger_id'] ?? null,
+                            'total_amount' => (string) ($service['total_amount'] ?? '0'),
+                            'total_currency' => $service['total_currency'] ?? 'USD',
+                        ])->values()->all();
+
+                        $elements[] = [
+                            'type' => $element['type'] ?? 'seat',
+                            'designator' => $element['designator'] ?? null,
+                            'name' => $element['name'] ?? '',
+                            'disclosures' => $element['disclosures'] ?? [],
+                            'available_services' => $services,
+                            'available' => ($element['type'] ?? '') === 'seat' && $services !== [],
+                        ];
+                    }
+                }
+
+                return ['elements' => $elements];
+            })->filter(fn (array $row) => $row['elements'] !== [])->values()->all();
+
+            return [
+                'cabin_class' => $cabin['cabin_class'] ?? 'economy',
+                'rows' => $rows,
+            ];
+        })->filter(fn (array $cabin) => $cabin['rows'] !== [])->values()->all();
+
+        if ($cabins === []) {
+            return null;
+        }
+
+        return [
+            'id' => $map['id'] ?? null,
+            'segment_id' => $map['segment_id'] ?? null,
+            'slice_id' => $map['slice_id'] ?? null,
+            'cabins' => $cabins,
+        ];
+    }
+
+    private function normalizeSelectedServices(array $offer, array $services): array
+    {
+        if ($services === []) {
+            return [];
+        }
+
+        $catalog = [];
+
+        foreach ($offer['available_services'] ?? [] as $service) {
+            if (! isset($service['id'])) {
+                continue;
+            }
+            $catalog[$service['id']] = [
+                'id' => $service['id'],
+                'type' => $service['type'] ?? 'baggage',
+                'total_amount' => (string) ($service['total_amount'] ?? '0'),
+                'total_currency' => $service['total_currency'] ?? ($offer['total_currency'] ?? 'USD'),
+                'maximum_quantity' => max(1, (int) ($service['maximum_quantity'] ?? 1)),
+                'label' => $this->baggageLabel((string) (($service['metadata']['type'] ?? 'checked'))),
+                'designator' => null,
+            ];
+        }
+
+        try {
+            foreach ($this->client->getSeatMaps($offer['id'] ?? '') as $map) {
+                foreach ($map['cabins'] ?? [] as $cabin) {
+                    foreach ($cabin['rows'] ?? [] as $row) {
+                        foreach ($row['sections'] ?? [] as $section) {
+                            foreach ($section['elements'] ?? [] as $element) {
+                                foreach ($element['available_services'] ?? [] as $service) {
+                                    if (! isset($service['id'])) {
+                                        continue;
+                                    }
+                                    $catalog[$service['id']] = [
+                                        'id' => $service['id'],
+                                        'type' => 'seat',
+                                        'total_amount' => (string) ($service['total_amount'] ?? '0'),
+                                        'total_currency' => $service['total_currency'] ?? ($offer['total_currency'] ?? 'USD'),
+                                        'maximum_quantity' => 1,
+                                        'label' => 'Seat '.($element['designator'] ?? ''),
+                                        'designator' => $element['designator'] ?? null,
+                                        'passenger_id' => $service['passenger_id'] ?? null,
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // Seat maps may be unavailable for some offers.
+        }
+
+        $normalized = [];
+        foreach ($services as $service) {
+            $id = $service['id'] ?? null;
+            $quantity = max(0, (int) ($service['quantity'] ?? 0));
+            if (! $id || $quantity < 1 || ! isset($catalog[$id])) {
+                continue;
+            }
+
+            $quantity = min($quantity, $catalog[$id]['maximum_quantity']);
+            $unit = (float) $catalog[$id]['total_amount'];
+
+            $normalized[] = [
+                'id' => $id,
+                'type' => $catalog[$id]['type'],
+                'quantity' => $quantity,
+                'total_amount' => $catalog[$id]['total_amount'],
+                'total_currency' => $catalog[$id]['total_currency'],
+                'line_total' => number_format($unit * $quantity, 2, '.', ''),
+                'label' => $catalog[$id]['label'],
+                'designator' => $catalog[$id]['designator'] ?? null,
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function sumAmounts(string $base, float $extra): string
+    {
+        return number_format(((float) $base) + $extra, 2, '.', '');
+    }
+
+    private function baggageLabel(string $type): string
+    {
+        return match ($type) {
+            'carry_on' => 'Cabin bag',
+            'checked' => 'Check-in bag',
+            default => Str::of($type)->replace('_', ' ')->title()->toString(),
+        };
     }
 
     private function flightNumber(array $segment): string

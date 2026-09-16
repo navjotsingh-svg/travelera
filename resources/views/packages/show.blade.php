@@ -2,7 +2,7 @@
     <div class="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
         <a href="{{ route('packages.index') }}" class="text-sm font-semibold text-teal-700">← All packages</a>
         <div class="mt-4 overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100">
-            <img src="{{ $package->image }}" alt="{{ $package->title }}" class="h-80 w-full object-cover">
+            <img src="{{ $package->imageSrc() }}" alt="{{ $package->title }}" class="h-80 w-full object-cover">
             <div class="p-8">
                 <p class="text-sm font-semibold uppercase tracking-widest text-teal-700">{{ $package->destination->city }}</p>
                 <h1 class="mt-2 text-3xl font-extrabold">{{ $package->title }}</h1>

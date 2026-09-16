@@ -7,7 +7,9 @@ use App\Models\Destination;
 use App\Models\TravelPackage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PackageController extends Controller
@@ -52,6 +54,7 @@ class PackageController extends Controller
 
     public function destroy(TravelPackage $package): RedirectResponse
     {
+        $this->deleteStoredImage($package->image);
         $package->delete();
 
         return redirect()->route('admin.packages.index')->with('status', 'Package deleted.');
@@ -68,9 +71,37 @@ class PackageController extends Controller
             'duration_days' => ['required', 'integer', 'min:1', 'max:60'],
             'price' => ['required', 'numeric', 'min:0'],
             'description' => ['required', 'string'],
-            'image' => ['required', 'string', 'max:500'],
+            'image_mode' => ['nullable', 'in:url,upload'],
+            'image' => ['nullable', 'string', 'max:500'],
+            'image_file' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp,gif', 'max:4096'],
             'includes_text' => ['nullable', 'string'],
         ]);
+
+        $mode = $validated['image_mode'] ?? ($request->hasFile('image_file') ? 'upload' : 'url');
+        $image = $package?->image;
+
+        if ($mode === 'upload') {
+            if ($request->hasFile('image_file')) {
+                $this->deleteStoredImage($package?->image);
+                $path = $request->file('image_file')->store('packages', 'public');
+                $image = Storage::disk('public')->url($path);
+            } elseif (! $package) {
+                throw ValidationException::withMessages([
+                    'image_file' => 'Please upload a package image.',
+                ]);
+            }
+        } else {
+            $url = trim((string) ($validated['image'] ?? ''));
+
+            if ($url !== '') {
+                $this->deleteStoredImage($package?->image);
+                $image = $url;
+            } elseif (! $package) {
+                throw ValidationException::withMessages([
+                    'image' => 'Please provide an image URL or upload a file.',
+                ]);
+            }
+        }
 
         return [
             'destination_id' => $validated['destination_id'],
@@ -79,7 +110,7 @@ class PackageController extends Controller
             'duration_days' => $validated['duration_days'],
             'price' => $validated['price'],
             'description' => $validated['description'],
-            'image' => $validated['image'],
+            'image' => $image,
             'includes' => $this->parseIncludes($validated['includes_text'] ?? null),
             'is_featured' => $request->boolean('is_featured'),
         ];
@@ -113,5 +144,23 @@ class PackageController extends Controller
         }
 
         return $slug;
+    }
+
+    private function deleteStoredImage(?string $image): void
+    {
+        if (! $image || str_starts_with($image, 'http://') || str_starts_with($image, 'https://') || str_starts_with($image, '//')) {
+            return;
+        }
+
+        $path = str_replace('/storage/', '', parse_url($image, PHP_URL_PATH) ?: $image);
+        $path = ltrim($path, '/');
+
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, strlen('storage/'));
+        }
+
+        if ($path !== '' && Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+        }
     }
 }
