@@ -16,12 +16,24 @@ class TravelSeeder extends Seeder
     public function run(): void
     {
         User::query()->updateOrCreate(
+            ['email' => 'admin@travelera.test'],
+            [
+                'name' => 'Travelera Admin',
+                'phone' => '9999999999',
+                'password' => 'password',
+                'email_verified_at' => now(),
+                'is_admin' => true,
+            ]
+        );
+
+        User::query()->updateOrCreate(
             ['email' => 'traveler@travelera.test'],
             [
                 'name' => 'Aarav Traveler',
                 'phone' => '9876543210',
                 'password' => 'password',
                 'email_verified_at' => now(),
+                'is_admin' => false,
             ]
         );
 

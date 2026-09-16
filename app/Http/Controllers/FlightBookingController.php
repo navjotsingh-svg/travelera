@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Booking;
+use App\Models\CheckoutAttempt;
 use App\Models\Flight;
 use App\Services\Duffel\DuffelException;
 use App\Services\Duffel\DuffelFlightService;
@@ -14,7 +15,7 @@ class FlightBookingController extends Controller
 {
     public function __construct(private readonly DuffelFlightService $duffel) {}
 
-    public function create(string $offer): View
+    public function create(string $offer): View|RedirectResponse
     {
         abort_unless($this->duffel->configured(), 404);
 
@@ -25,6 +26,22 @@ class FlightBookingController extends Controller
                 ->route('flights.index')
                 ->with('status', $exception->getMessage());
         }
+
+        CheckoutAttempt::query()->updateOrCreate(
+            [
+                'user_id' => request()->user()?->id,
+                'offer_id' => $offer,
+                'status' => 'started',
+            ],
+            [
+                'airline' => $flight['airline'] ?? null,
+                'flight_number' => $flight['flight_number'] ?? null,
+                'origin' => $flight['origin'] ?? null,
+                'destination' => $flight['destination'] ?? null,
+                'amount' => $flight['total_amount'] ?? null,
+                'currency' => $flight['total_currency'] ?? 'INR',
+            ]
+        );
 
         return view('flights.book', compact('flight'));
     }
@@ -65,6 +82,12 @@ class FlightBookingController extends Controller
         try {
             $order = $this->duffel->book($offer, $passengers);
         } catch (DuffelException $exception) {
+            CheckoutAttempt::query()
+                ->where('user_id', $request->user()->id)
+                ->where('offer_id', $offer)
+                ->where('status', 'started')
+                ->update(['status' => 'abandoned']);
+
             return back()->withErrors(['offer' => $exception->getMessage()])->withInput();
         }
 
@@ -88,8 +111,19 @@ class FlightBookingController extends Controller
             'total_amount' => $order['total_amount'] ?? $flight['total_amount'],
             'currency' => $order['total_currency'] ?? $flight['total_currency'],
             'status' => 'confirmed',
+            'payment_status' => 'paid',
             'snapshot' => $this->duffel->snapshotFromOffer($flight),
         ]);
+
+        CheckoutAttempt::query()
+            ->where('user_id', $request->user()->id)
+            ->where('offer_id', $offer)
+            ->where('status', 'started')
+            ->update([
+                'status' => 'completed',
+                'booking_id' => $booking->id,
+                'completed_at' => now(),
+            ]);
 
         return redirect()
             ->route('bookings.show', $booking)

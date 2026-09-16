@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AirportController;
+use App\Http\Controllers\BlogController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CabController;
 use App\Http\Controllers\ContactController;
@@ -17,6 +18,9 @@ Route::get('/airports/suggest', [AirportController::class, 'suggest'])->name('ai
 Route::view('/about', 'about')->name('about');
 Route::view('/visa', 'visa')->name('visa');
 Route::post('/contact', [ContactController::class, 'store'])->name('contact.store');
+
+Route::get('/blog', [BlogController::class, 'index'])->name('blogs.index');
+Route::get('/blog/{blog:slug}', [BlogController::class, 'show'])->name('blogs.show');
 
 Route::get('/flights', [FlightController::class, 'index'])->name('flights.index');
 Route::get('/flights/offers/{offer}', [FlightController::class, 'offer'])->name('flights.offer');
@@ -52,3 +56,4 @@ Route::middleware('auth')->group(function () {
 });
 
 require __DIR__.'/auth.php';
+require __DIR__.'/admin.php';

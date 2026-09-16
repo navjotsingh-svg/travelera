@@ -80,6 +80,7 @@ class BookingController extends Controller
             'cabin_class' => $bookable instanceof Flight ? $bookable->cabin_class : null,
             'total_amount' => $total,
             'status' => 'confirmed',
+            'payment_status' => 'paid',
             'notes' => $validated['notes'] ?? null,
         ]);
 

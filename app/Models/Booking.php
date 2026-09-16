@@ -32,6 +32,7 @@ class Booking extends Model
         'total_amount',
         'currency',
         'status',
+        'payment_status',
         'notes',
         'snapshot',
     ];
@@ -52,6 +53,7 @@ class Booking extends Model
         static::creating(function (Booking $booking) {
             $booking->booking_reference ??= 'TRAV-'.strtoupper(Str::random(8));
             $booking->status ??= 'confirmed';
+            $booking->payment_status ??= 'paid';
         });
     }
 

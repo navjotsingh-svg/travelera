@@ -25,6 +25,7 @@
                     <a class="{{ request()->routeIs('about') ? 'is-active text-brand-700' : 'hover:text-brand-700' }}" href="{{ route('about') }}">About</a>
                     <a class="hover:text-brand-700" href="{{ url('/#services') }}">Services</a>
                     <a class="{{ request()->routeIs('visa') ? 'is-active text-brand-700' : 'hover:text-brand-700' }}" href="{{ route('visa') }}">Visa Services</a>
+                    <a class="{{ request()->routeIs('blogs.*') ? 'is-active text-brand-700' : 'hover:text-brand-700' }}" href="{{ route('blogs.index') }}">Blog</a>
                     <a class="hover:text-brand-700" href="{{ url('/#contact') }}">Contact</a>
                 </nav>
 
@@ -33,6 +34,9 @@
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
                     </a>
                     @auth
+                        @if (auth()->user()->isAdmin())
+                            <a href="{{ route('admin.dashboard') }}" class="hidden text-sm font-semibold text-slate-600 hover:text-brand-700 sm:inline">Admin</a>
+                        @endif
                         <a href="{{ route('bookings.index') }}" class="hidden text-sm font-semibold text-slate-600 hover:text-brand-700 sm:inline">My trips</a>
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
@@ -53,9 +57,15 @@
                     <a href="{{ route('about') }}">About</a>
                     <a href="{{ url('/#services') }}">Services</a>
                     <a href="{{ route('visa') }}">Visa Services</a>
+                    <a href="{{ route('blogs.index') }}">Blog</a>
                     <a href="{{ url('/#contact') }}">Contact</a>
                     <a href="{{ route('flights.index') }}">Flights</a>
                     <a href="{{ route('hotels.index') }}">Hotels</a>
+                    @auth
+                        @if (auth()->user()->isAdmin())
+                            <a href="{{ route('admin.dashboard') }}">Admin</a>
+                        @endif
+                    @endauth
                     @guest
                         <a href="{{ route('login') }}">Login</a>
                         <a href="{{ route('register') }}">Sign up</a>

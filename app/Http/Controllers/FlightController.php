@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Destination;
 use App\Models\Flight;
+use App\Models\FlightSearch;
 use App\Services\Duffel\DuffelException;
 use App\Services\Duffel\DuffelFlightService;
 use Illuminate\Http\Request;
@@ -36,6 +37,7 @@ class FlightController extends Controller
 
             if ($fromCode === $toCode) {
                 $error = 'Origin and destination must be different airports.';
+                $this->logSearch($request, $fromCode, $toCode, 0, true);
             } else {
                 try {
                     $result = $this->duffel->search(
@@ -47,8 +49,10 @@ class FlightController extends Controller
                         adults: $request->integer('adults', 1),
                     );
                     $offers = collect($result['offers']);
+                    $this->logSearch($request, $fromCode, $toCode, $offers->count(), false);
                 } catch (DuffelException $exception) {
                     $error = $exception->getMessage();
+                    $this->logSearch($request, $fromCode, $toCode, 0, true);
                 }
             }
         }
@@ -63,6 +67,10 @@ class FlightController extends Controller
             ->orderBy('departure_at')
             ->paginate(8)
             ->withQueryString();
+
+        if (! $live && $searched) {
+            $this->logSearch($request, $fromCode, $toCode, $flights->total(), false);
+        }
 
         return view('flights.index', compact('airports', 'cities', 'live', 'offers', 'error', 'searched', 'flights'));
     }
@@ -83,5 +91,21 @@ class FlightController extends Controller
     public function show(Flight $flight): View
     {
         return view('flights.show', compact('flight'));
+    }
+
+    private function logSearch(Request $request, string $fromCode, string $toCode, int $resultsCount, bool $hadError): void
+    {
+        FlightSearch::query()->create([
+            'user_id' => $request->user()?->id,
+            'origin' => $fromCode,
+            'destination' => $toCode,
+            'departure_date' => $request->input('date'),
+            'return_date' => $request->input('return_date'),
+            'cabin' => $request->input('cabin', 'economy'),
+            'adults' => $request->integer('adults', 1),
+            'results_count' => $resultsCount,
+            'had_error' => $hadError,
+            'ip_address' => $request->ip(),
+        ]);
     }
 }
