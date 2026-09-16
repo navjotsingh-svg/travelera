@@ -11,6 +11,7 @@ use App\Services\Stripe\StripePaymentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
@@ -65,6 +66,27 @@ class PaymentController extends Controller
             return redirect()
                 ->route('bookings.show', $booking)
                 ->with('status', 'Payment received, but airline confirmation is pending: '.$exception->getMessage());
+        } catch (\Throwable $exception) {
+            if (! str_contains(strtolower($exception->getMessage()), 'server has gone away')
+                && ! str_contains(strtolower($exception->getMessage()), 'lost connection')) {
+                throw $exception;
+            }
+
+            Log::warning('Payment success retrying after MySQL disconnect', [
+                'booking_id' => $booking->id,
+                'message' => $exception->getMessage(),
+            ]);
+
+            DB::reconnect();
+            $booking = $booking->fresh() ?? $booking;
+
+            try {
+                $booking = $this->fulfillment->fulfillPaidBooking($booking);
+            } catch (DuffelException $duffelException) {
+                return redirect()
+                    ->route('bookings.show', $booking)
+                    ->with('status', 'Payment received, but airline confirmation is pending: '.$duffelException->getMessage());
+            }
         }
 
         return redirect()
