@@ -9,6 +9,8 @@
                 <div><dt>User</dt><dd>{{ $booking->user?->email ?? '—' }}</dd></div>
                 <div><dt>Guest</dt><dd>{{ $booking->guest_name }} · {{ $booking->guest_email }}</dd></div>
                 <div><dt>Travel date</dt><dd>{{ optional($booking->travel_date)->format('d M Y') ?? '—' }}</dd></div>
+                <div><dt>Departure</dt><dd>{{ optional($booking->departureAt())->format('d M Y H:i') ?? '—' }}</dd></div>
+                <div><dt>Arrival</dt><dd>{{ optional($booking->arrivalAt())->format('d M Y H:i') ?? '—' }}</dd></div>
                 <div><dt>Amount</dt><dd>{{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }}</dd></div>
                 <div><dt>Provider</dt><dd>{{ $booking->provider }}</dd></div>
                 <div><dt>PNR</dt><dd>{{ $booking->airline_pnr ?: '—' }}</dd></div>

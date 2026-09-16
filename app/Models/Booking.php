@@ -104,4 +104,72 @@ class Booking extends Model
             default => 'Booking',
         };
     }
+
+    public function departureAt(): ?\Carbon\Carbon
+    {
+        return $this->snapshotDateTime('departure_at')
+            ?? optional($this->bookable)->departure_at;
+    }
+
+    public function arrivalAt(): ?\Carbon\Carbon
+    {
+        return $this->snapshotDateTime('arrival_at')
+            ?? optional($this->bookable)->arrival_at;
+    }
+
+    public function flightDurationLabel(): ?string
+    {
+        $duration = $this->snapshot['duration'] ?? null;
+
+        return filled($duration) ? (string) $duration : null;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function itinerarySlices(): array
+    {
+        $slices = $this->snapshot['slices'] ?? [];
+
+        if (! is_array($slices) || $slices === []) {
+            $departure = $this->departureAt();
+            $arrival = $this->arrivalAt();
+
+            if (! $departure && ! $arrival) {
+                return [];
+            }
+
+            return [[
+                'origin' => $this->snapshot['origin'] ?? '',
+                'destination' => $this->snapshot['destination'] ?? '',
+                'duration' => $this->flightDurationLabel(),
+                'segments' => [[
+                    'airline' => $this->snapshot['airline'] ?? '',
+                    'flight_number' => $this->snapshot['flight_number'] ?? '',
+                    'origin' => $this->snapshot['origin'] ?? '',
+                    'destination' => $this->snapshot['destination'] ?? '',
+                    'departure_at' => optional($departure)?->toIso8601String(),
+                    'arrival_at' => optional($arrival)?->toIso8601String(),
+                    'duration' => $this->flightDurationLabel(),
+                ]],
+            ]];
+        }
+
+        return $slices;
+    }
+
+    private function snapshotDateTime(string $key): ?\Carbon\Carbon
+    {
+        $value = $this->snapshot[$key] ?? null;
+
+        if (! filled($value)) {
+            return null;
+        }
+
+        try {
+            return \Carbon\Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
 }

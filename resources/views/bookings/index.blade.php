@@ -21,7 +21,14 @@
                             <h2 class="mt-1 text-lg font-bold">{{ $booking->title() }}</h2>
                             <p class="text-sm text-slate-500">
                                 {{ $booking->travelers }} traveler(s)
-                                @if ($booking->travel_date) · {{ $booking->travel_date->format('d M Y') }} @endif
+                                @if ($booking->departureAt())
+                                    · {{ $booking->departureAt()->format('d M Y · H:i') }}
+                                    @if ($booking->arrivalAt())
+                                        → {{ $booking->arrivalAt()->format('H:i') }}
+                                    @endif
+                                @elseif ($booking->travel_date)
+                                    · {{ $booking->travel_date->format('d M Y') }}
+                                @endif
                             </p>
                         </div>
                         <div class="text-right">

@@ -365,21 +365,51 @@ class DuffelFlightService
 
     public function snapshotFromOffer(array $offer, array $selectedServices = []): array
     {
+        $slices = collect($offer['slices'] ?? [])->map(function (array $slice) {
+            return [
+                ...$slice,
+                'segments' => collect($slice['segments'] ?? [])->map(function (array $segment) {
+                    return [
+                        ...$segment,
+                        'departure_at' => $this->toIsoString($segment['departure_at'] ?? null),
+                        'arrival_at' => $this->toIsoString($segment['arrival_at'] ?? null),
+                    ];
+                })->all(),
+            ];
+        })->all();
+
         return [
             'airline' => $offer['airline'],
             'flight_number' => $offer['flight_number'],
             'origin' => $offer['origin'],
             'destination' => $offer['destination'],
-            'departure_at' => optional($offer['departure_at'])->toIso8601String(),
-            'arrival_at' => optional($offer['arrival_at'])->toIso8601String(),
+            'departure_at' => $this->toIsoString($offer['departure_at'] ?? null),
+            'arrival_at' => $this->toIsoString($offer['arrival_at'] ?? null),
             'cabin_class' => $offer['cabin_class'],
             'duration' => $offer['duration'],
             'stops' => $offer['stops'],
             'is_return' => $offer['is_return'],
-            'slices' => $offer['slices'] ?? [],
+            'slices' => $slices,
             'included_baggage' => $offer['included_baggage'] ?? [],
             'selected_services' => $selectedServices,
         ];
+    }
+
+    private function toIsoString(mixed $value): ?string
+    {
+        if ($value instanceof \Carbon\CarbonInterface) {
+            return $value->toIso8601String();
+        }
+
+        if (is_string($value) && filled($value)) {
+            try {
+                return \Carbon\Carbon::parse($value)->toIso8601String();
+            } catch (\Throwable) {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     public function e164(?string $phone): string

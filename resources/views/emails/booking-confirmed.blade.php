@@ -19,6 +19,12 @@
                                 </p>
                                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size:14px;line-height:1.7;background:#f8fafc;border-radius:12px;padding:8px 0;">
                                     <tr><td style="padding:8px 16px;color:#64748b;">Trip</td><td style="padding:8px 16px;font-weight:600;">{{ $booking->title() }}</td></tr>
+                                    @if ($booking->departureAt())
+                                        <tr><td style="padding:8px 16px;color:#64748b;">Departure</td><td style="padding:8px 16px;font-weight:600;">{{ $booking->departureAt()->format('D, d M Y · H:i') }}</td></tr>
+                                    @endif
+                                    @if ($booking->arrivalAt())
+                                        <tr><td style="padding:8px 16px;color:#64748b;">Arrival</td><td style="padding:8px 16px;font-weight:600;">{{ $booking->arrivalAt()->format('D, d M Y · H:i') }}</td></tr>
+                                    @endif
                                     <tr><td style="padding:8px 16px;color:#64748b;">Travelers</td><td style="padding:8px 16px;font-weight:600;">{{ $booking->travelers }}</td></tr>
                                     @if ($booking->airline_pnr)
                                         <tr><td style="padding:8px 16px;color:#64748b;">Airline PNR</td><td style="padding:8px 16px;font-weight:600;">{{ $booking->airline_pnr }}</td></tr>

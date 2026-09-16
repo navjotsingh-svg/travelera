@@ -1,4 +1,12 @@
 <x-public-layout title="Booking {{ $booking->booking_reference }}">
+    @php
+        $departure = $booking->departureAt();
+        $arrival = $booking->arrivalAt();
+        $slices = $booking->provider === 'duffel' || $booking->typeLabel() === 'Flight'
+            ? $booking->itinerarySlices()
+            : [];
+    @endphp
+
     <div class="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
         @if (session('status'))
             <div class="mb-6 rounded-2xl bg-teal-50 p-4 text-sm text-teal-800">{{ session('status') }}</div>
@@ -8,6 +16,97 @@
             <p class="text-sm font-semibold uppercase tracking-widest text-teal-700">{{ $booking->typeLabel() }} ticket</p>
             <h1 class="mt-2 text-3xl font-extrabold">{{ $booking->title() }}</h1>
             <p class="mt-1 text-slate-500">{{ $booking->booking_reference }} · {{ ucfirst($booking->status) }}</p>
+
+            @if ($departure || $arrival || $slices !== [])
+                <div class="ticket-schedule mt-8 overflow-hidden rounded-[24px] bg-gradient-to-br from-[#04153f] via-[#0a2a8f] to-[#2b6bff] p-6 text-white sm:p-7">
+                    <div class="flex flex-wrap items-end justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-bold tracking-[0.2em] text-blue-200">FLIGHT SCHEDULE</p>
+                            @if ($departure)
+                                <p class="mt-2 text-lg font-semibold">{{ $departure->format('D, d M Y') }}</p>
+                            @elseif ($booking->travel_date)
+                                <p class="mt-2 text-lg font-semibold">{{ $booking->travel_date->format('D, d M Y') }}</p>
+                            @endif
+                        </div>
+                        @if ($booking->flightDurationLabel())
+                            <p class="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold tracking-wide text-blue-50">
+                                {{ $booking->flightDurationLabel() }}
+                            </p>
+                        @endif
+                    </div>
+
+                    <div class="mt-8 grid gap-6 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                        <div>
+                            <p class="text-4xl font-extrabold tracking-tight">{{ $departure?->format('H:i') ?? '—' }}</p>
+                            <p class="mt-2 text-sm font-semibold text-blue-100">{{ $booking->snapshot['origin'] ?? 'Departure' }}</p>
+                            <p class="mt-1 text-xs text-blue-200">{{ $departure?->format('D, d M Y') ?? 'Local departure' }}</p>
+                        </div>
+
+                        <div class="hidden text-center sm:block">
+                            <div class="mx-auto h-px w-16 bg-white/35"></div>
+                            <p class="mt-2 text-[11px] font-bold tracking-[0.18em] text-blue-200">
+                                {{ ($booking->snapshot['stops'] ?? 0) > 0 ? ($booking->snapshot['stops'].' stop') : 'Non-stop' }}
+                            </p>
+                        </div>
+
+                        <div class="sm:text-right">
+                            <p class="text-4xl font-extrabold tracking-tight">{{ $arrival?->format('H:i') ?? '—' }}</p>
+                            <p class="mt-2 text-sm font-semibold text-blue-100">{{ $booking->snapshot['destination'] ?? 'Arrival' }}</p>
+                            <p class="mt-1 text-xs text-blue-200">{{ $arrival?->format('D, d M Y') ?? 'Local arrival' }}</p>
+                        </div>
+                    </div>
+
+                    @if (count($slices) > 0)
+                        <div class="mt-8 space-y-4 border-t border-white/15 pt-6">
+                            @foreach ($slices as $sliceIndex => $slice)
+                                @php
+                                    $segments = $slice['segments'] ?? [];
+                                @endphp
+                                @if (count($slices) > 1)
+                                    <p class="text-xs font-bold tracking-[0.18em] text-blue-200">
+                                        {{ $sliceIndex === 0 ? 'OUTBOUND' : 'RETURN' }}
+                                        @if (! empty($slice['origin']) && ! empty($slice['destination']))
+                                            · {{ $slice['origin'] }} → {{ $slice['destination'] }}
+                                        @endif
+                                    </p>
+                                @endif
+
+                                @foreach ($segments as $segment)
+                                    @php
+                                        $segDep = filled($segment['departure_at'] ?? null) ? \Carbon\Carbon::parse($segment['departure_at']) : null;
+                                        $segArr = filled($segment['arrival_at'] ?? null) ? \Carbon\Carbon::parse($segment['arrival_at']) : null;
+                                    @endphp
+                                    <div class="rounded-2xl bg-white/10 px-4 py-3 backdrop-blur-sm">
+                                        <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+                                            <p class="font-semibold">
+                                                {{ $segment['flight_number'] ?? ($booking->snapshot['flight_number'] ?? 'Flight') }}
+                                                @if (! empty($segment['airline']))
+                                                    <span class="font-normal text-blue-100">· {{ $segment['airline'] }}</span>
+                                                @endif
+                                            </p>
+                                            @if (! empty($segment['duration']))
+                                                <p class="text-xs text-blue-100">{{ $segment['duration'] }}</p>
+                                            @endif
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-blue-50">
+                                            <p>
+                                                <span class="text-blue-200">Dep</span>
+                                                <strong class="ml-1 text-white">{{ $segDep?->format('D, d M · H:i') ?? '—' }}</strong>
+                                                <span class="ml-1 text-blue-100">{{ $segment['origin'] ?? '' }}</span>
+                                            </p>
+                                            <p>
+                                                <span class="text-blue-200">Arr</span>
+                                                <strong class="ml-1 text-white">{{ $segArr?->format('D, d M · H:i') ?? '—' }}</strong>
+                                                <span class="ml-1 text-blue-100">{{ $segment['destination'] ?? '' }}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            @endif
 
             <dl class="mt-8 grid gap-4 md:grid-cols-2">
                 <div class="rounded-2xl bg-slate-50 p-4">
@@ -30,10 +129,21 @@
                     <dt class="text-sm text-slate-500">Payment</dt>
                     <dd class="font-semibold capitalize">{{ $booking->payment_status }}</dd>
                 </div>
-                @if ($booking->stripe_payment_intent_id)
-                    <div class="rounded-2xl bg-slate-50 p-4 md:col-span-2">
-                        <dt class="text-sm text-slate-500">Stripe payment</dt>
-                        <dd class="font-semibold break-all">{{ $booking->stripe_payment_intent_id }}</dd>
+                @if ($departure)
+                    <div class="rounded-2xl bg-slate-50 p-4">
+                        <dt class="text-sm text-slate-500">Departure</dt>
+                        <dd class="font-semibold">{{ $departure->format('D, d M Y · H:i') }}</dd>
+                    </div>
+                @elseif ($booking->travel_date)
+                    <div class="rounded-2xl bg-slate-50 p-4">
+                        <dt class="text-sm text-slate-500">Travel date</dt>
+                        <dd class="font-semibold">{{ $booking->travel_date->format('D, d M Y') }}</dd>
+                    </div>
+                @endif
+                @if ($arrival)
+                    <div class="rounded-2xl bg-slate-50 p-4">
+                        <dt class="text-sm text-slate-500">Arrival</dt>
+                        <dd class="font-semibold">{{ $arrival->format('D, d M Y · H:i') }}</dd>
                     </div>
                 @endif
                 @if ($booking->airline_pnr)
@@ -48,10 +158,10 @@
                         <dd class="font-semibold break-all">{{ $booking->duffel_order_id }}</dd>
                     </div>
                 @endif
-                @if ($booking->travel_date)
-                    <div class="rounded-2xl bg-slate-50 p-4">
-                        <dt class="text-sm text-slate-500">Travel date</dt>
-                        <dd class="font-semibold">{{ $booking->travel_date->format('D, d M Y') }}</dd>
+                @if ($booking->stripe_payment_intent_id)
+                    <div class="rounded-2xl bg-slate-50 p-4 md:col-span-2">
+                        <dt class="text-sm text-slate-500">Stripe payment</dt>
+                        <dd class="font-semibold break-all">{{ $booking->stripe_payment_intent_id }}</dd>
                     </div>
                 @endif
                 @if (! empty($booking->snapshot['selected_services']))
