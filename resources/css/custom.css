@@ -251,6 +251,7 @@ h6,
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
     z-index: 2;
     flex-shrink: 0;
+    margin-left: -22px;
 }
 
 .search-swap:hover {
@@ -1119,6 +1120,7 @@ h6,
     background: #fff;
     color: var(--brand);
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    margin-left: -20px;
 }
 
 .flight-listing-route .relative.min-w-0 {
@@ -4022,4 +4024,36 @@ a.admin-stat:hover {
         animation: none;
         stroke-dashoffset: 0;
     }
+}
+
+/* Booking ticket schedule — keep contrast even if Tailwind gradient utilities are missing */
+.ticket-schedule {
+    background: linear-gradient(135deg, #04153f 0%, #0a2a8f 48%, #2b6bff 100%);
+    color: #ffffff;
+}
+
+.ticket-schedule .ticket-kicker,
+.ticket-schedule .ticket-muted {
+    color: #c7d2fe;
+}
+
+.ticket-schedule .ticket-soft {
+    color: #e0e7ff;
+}
+
+.ticket-schedule .ticket-chip {
+    background: rgba(255, 255, 255, 0.16);
+    color: #eff6ff;
+}
+
+.ticket-schedule .ticket-segment {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.ticket-schedule .ticket-rule {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.ticket-schedule strong {
+    color: #ffffff;
 }

@@ -18,10 +18,10 @@
             <p class="mt-1 text-slate-500">{{ $booking->booking_reference }} · {{ ucfirst($booking->status) }}</p>
 
             @if ($departure || $arrival || $slices !== [])
-                <div class="ticket-schedule mt-8 overflow-hidden rounded-[24px] bg-gradient-to-br from-[#04153f] via-[#0a2a8f] to-[#2b6bff] p-6 text-white sm:p-7">
+                <div class="ticket-schedule mt-8 overflow-hidden rounded-[24px] p-6 sm:p-7">
                     <div class="flex flex-wrap items-end justify-between gap-4">
                         <div>
-                            <p class="text-xs font-bold tracking-[0.2em] text-blue-200">FLIGHT SCHEDULE</p>
+                            <p class="ticket-kicker text-xs font-bold tracking-[0.2em]">FLIGHT SCHEDULE</p>
                             @if ($departure)
                                 <p class="mt-2 text-lg font-semibold">{{ $departure->format('D, d M Y') }}</p>
                             @elseif ($booking->travel_date)
@@ -29,7 +29,7 @@
                             @endif
                         </div>
                         @if ($booking->flightDurationLabel())
-                            <p class="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold tracking-wide text-blue-50">
+                            <p class="ticket-chip rounded-full px-3 py-1 text-xs font-semibold tracking-wide">
                                 {{ $booking->flightDurationLabel() }}
                             </p>
                         @endif
@@ -38,21 +38,21 @@
                     <div class="mt-8 grid gap-6 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
                         <div>
                             <p class="text-4xl font-extrabold tracking-tight">{{ $departure?->format('H:i') ?? '—' }}</p>
-                            <p class="mt-2 text-sm font-semibold text-blue-100">{{ $booking->snapshot['origin'] ?? 'Departure' }}</p>
-                            <p class="mt-1 text-xs text-blue-200">{{ $departure?->format('D, d M Y') ?? 'Local departure' }}</p>
+                            <p class="ticket-soft mt-2 text-sm font-semibold">{{ $booking->snapshot['origin'] ?? 'Departure' }}</p>
+                            <p class="ticket-muted mt-1 text-xs">{{ $departure?->format('D, d M Y') ?? 'Local departure' }}</p>
                         </div>
 
                         <div class="hidden text-center sm:block">
-                            <div class="mx-auto h-px w-16 bg-white/35"></div>
-                            <p class="mt-2 text-[11px] font-bold tracking-[0.18em] text-blue-200">
+                            <div class="ticket-rule mx-auto h-px w-16"></div>
+                            <p class="ticket-muted mt-2 text-[11px] font-bold tracking-[0.18em]">
                                 {{ ($booking->snapshot['stops'] ?? 0) > 0 ? ($booking->snapshot['stops'].' stop') : 'Non-stop' }}
                             </p>
                         </div>
 
                         <div class="sm:text-right">
                             <p class="text-4xl font-extrabold tracking-tight">{{ $arrival?->format('H:i') ?? '—' }}</p>
-                            <p class="mt-2 text-sm font-semibold text-blue-100">{{ $booking->snapshot['destination'] ?? 'Arrival' }}</p>
-                            <p class="mt-1 text-xs text-blue-200">{{ $arrival?->format('D, d M Y') ?? 'Local arrival' }}</p>
+                            <p class="ticket-soft mt-2 text-sm font-semibold">{{ $booking->snapshot['destination'] ?? 'Arrival' }}</p>
+                            <p class="ticket-muted mt-1 text-xs">{{ $arrival?->format('D, d M Y') ?? 'Local arrival' }}</p>
                         </div>
                     </div>
 
@@ -63,7 +63,7 @@
                                     $segments = $slice['segments'] ?? [];
                                 @endphp
                                 @if (count($slices) > 1)
-                                    <p class="text-xs font-bold tracking-[0.18em] text-blue-200">
+                                    <p class="ticket-kicker text-xs font-bold tracking-[0.18em]">
                                         {{ $sliceIndex === 0 ? 'OUTBOUND' : 'RETURN' }}
                                         @if (! empty($slice['origin']) && ! empty($slice['destination']))
                                             · {{ $slice['origin'] }} → {{ $slice['destination'] }}
@@ -76,28 +76,28 @@
                                         $segDep = filled($segment['departure_at'] ?? null) ? \Carbon\Carbon::parse($segment['departure_at']) : null;
                                         $segArr = filled($segment['arrival_at'] ?? null) ? \Carbon\Carbon::parse($segment['arrival_at']) : null;
                                     @endphp
-                                    <div class="rounded-2xl bg-white/10 px-4 py-3 backdrop-blur-sm">
+                                    <div class="ticket-segment rounded-2xl px-4 py-3">
                                         <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
                                             <p class="font-semibold">
                                                 {{ $segment['flight_number'] ?? ($booking->snapshot['flight_number'] ?? 'Flight') }}
                                                 @if (! empty($segment['airline']))
-                                                    <span class="font-normal text-blue-100">· {{ $segment['airline'] }}</span>
+                                                    <span class="ticket-soft font-normal">· {{ $segment['airline'] }}</span>
                                                 @endif
                                             </p>
                                             @if (! empty($segment['duration']))
-                                                <p class="text-xs text-blue-100">{{ $segment['duration'] }}</p>
+                                                <p class="ticket-soft text-xs">{{ $segment['duration'] }}</p>
                                             @endif
                                         </div>
-                                        <div class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-blue-50">
+                                        <div class="ticket-soft mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
                                             <p>
-                                                <span class="text-blue-200">Dep</span>
-                                                <strong class="ml-1 text-white">{{ $segDep?->format('D, d M · H:i') ?? '—' }}</strong>
-                                                <span class="ml-1 text-blue-100">{{ $segment['origin'] ?? '' }}</span>
+                                                <span class="ticket-muted">Dep</span>
+                                                <strong class="ml-1">{{ $segDep?->format('D, d M · H:i') ?? '—' }}</strong>
+                                                <span class="ticket-soft ml-1">{{ $segment['origin'] ?? '' }}</span>
                                             </p>
                                             <p>
-                                                <span class="text-blue-200">Arr</span>
-                                                <strong class="ml-1 text-white">{{ $segArr?->format('D, d M · H:i') ?? '—' }}</strong>
-                                                <span class="ml-1 text-blue-100">{{ $segment['destination'] ?? '' }}</span>
+                                                <span class="ticket-muted">Arr</span>
+                                                <strong class="ml-1">{{ $segArr?->format('D, d M · H:i') ?? '—' }}</strong>
+                                                <span class="ticket-soft ml-1">{{ $segment['destination'] ?? '' }}</span>
                                             </p>
                                         </div>
                                     </div>
