@@ -83,8 +83,8 @@ class PackageController extends Controller
         if ($mode === 'upload') {
             if ($request->hasFile('image_file')) {
                 $this->deleteStoredImage($package?->image);
-                $path = $request->file('image_file')->store('packages', 'public');
-                $image = Storage::disk('public')->url($path);
+                $path = $request->file('image_file')->store('packages', 'uploads');
+                $image = asset('uploads/'.$path);
             } elseif (! $package) {
                 throw ValidationException::withMessages([
                     'image_file' => 'Please upload a package image.',
@@ -148,16 +148,33 @@ class PackageController extends Controller
 
     private function deleteStoredImage(?string $image): void
     {
-        if (! $image || str_starts_with($image, 'http://') || str_starts_with($image, 'https://') || str_starts_with($image, '//')) {
+        if (! $image) {
             return;
         }
 
-        $path = str_replace('/storage/', '', parse_url($image, PHP_URL_PATH) ?: $image);
-        $path = ltrim($path, '/');
+        $path = $image;
 
-        if (str_starts_with($path, 'storage/')) {
-            $path = substr($path, strlen('storage/'));
+        if (str_starts_with($image, 'http://') || str_starts_with($image, 'https://') || str_starts_with($image, '//')) {
+            $path = parse_url($image, PHP_URL_PATH) ?: '';
         }
+
+        $path = ltrim((string) $path, '/');
+
+        if (str_starts_with($path, 'uploads/')) {
+            $relative = substr($path, strlen('uploads/'));
+            if ($relative !== '' && Storage::disk('uploads')->exists($relative)) {
+                Storage::disk('uploads')->delete($relative);
+            }
+
+            return;
+        }
+
+        if (str_contains($path, '/storage/')) {
+            $path = preg_replace('#^.*?/storage/#', '', $path) ?? $path;
+        }
+
+        $path = str_replace('storage/', '', $path);
+        $path = ltrim($path, '/');
 
         if ($path !== '' && Storage::disk('public')->exists($path)) {
             Storage::disk('public')->delete($path);

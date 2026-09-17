@@ -11,6 +11,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\HotelController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\StorageFileController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
@@ -22,6 +23,14 @@ Route::post('/contact', [ContactController::class, 'store'])->name('contact.stor
 
 Route::get('/blog', [BlogController::class, 'index'])->name('blogs.index');
 Route::get('/blog/{blog:slug}', [BlogController::class, 'show'])->name('blogs.show');
+
+/*
+ | Fallback when public/storage symlink is broken/blocked (shared hosting 403).
+ | If a working symlink exists, the web server serves the file first.
+ */
+Route::get('/storage/{path}', [StorageFileController::class, 'show'])
+    ->where('path', '.*')
+    ->name('storage.fallback');
 
 Route::get('/flights', [FlightController::class, 'index'])->name('flights.index');
 Route::get('/flights/offers/{offer}', [FlightController::class, 'offer'])->name('flights.offer');

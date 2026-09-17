@@ -47,6 +47,19 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Direct public uploads (no symlink required). Prefer this on shared hosts
+         * that return 403 for /storage/* when the symlink is broken or blocked.
+         */
+        'uploads' => [
+            'driver' => 'local',
+            'root' => public_path('uploads'),
+            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/uploads',
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

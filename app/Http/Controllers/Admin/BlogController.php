@@ -105,9 +105,9 @@ class BlogController extends Controller
             return null;
         }
 
-        $path = $request->file('cover_image')->store('blogs', 'public');
+        $path = $request->file('cover_image')->store('blogs', 'uploads');
 
-        return Storage::disk('public')->url($path);
+        return asset('uploads/'.$path);
     }
 
     private function deleteStoredImage(?string $image): void
@@ -116,21 +116,29 @@ class BlogController extends Controller
             return;
         }
 
+        $path = $image;
+
         if (str_starts_with($image, 'http://') || str_starts_with($image, 'https://') || str_starts_with($image, '//')) {
             $path = parse_url($image, PHP_URL_PATH) ?: '';
-            if (! str_contains($path, '/storage/')) {
-                return;
+        }
+
+        $path = ltrim((string) $path, '/');
+
+        if (str_starts_with($path, 'uploads/')) {
+            $relative = substr($path, strlen('uploads/'));
+            if ($relative !== '' && Storage::disk('uploads')->exists($relative)) {
+                Storage::disk('uploads')->delete($relative);
             }
-            $path = str_replace('/storage/', '', $path);
-        } else {
-            $path = str_replace('/storage/', '', $image);
+
+            return;
         }
 
+        if (str_contains($path, '/storage/')) {
+            $path = preg_replace('#^.*?/storage/#', '', $path) ?? $path;
+        }
+
+        $path = str_replace('storage/', '', $path);
         $path = ltrim($path, '/');
-
-        if (str_starts_with($path, 'storage/')) {
-            $path = substr($path, strlen('storage/'));
-        }
 
         if ($path !== '' && Storage::disk('public')->exists($path)) {
             Storage::disk('public')->delete($path);
