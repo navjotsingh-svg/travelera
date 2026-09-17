@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Blog;
+use App\Support\PublicUpload;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -105,9 +106,7 @@ class BlogController extends Controller
             return null;
         }
 
-        $path = $request->file('cover_image')->store('blogs', 'uploads');
-
-        return asset('uploads/'.$path);
+        return PublicUpload::store($request->file('cover_image'), 'blogs');
     }
 
     private function deleteStoredImage(?string $image): void
@@ -115,6 +114,8 @@ class BlogController extends Controller
         if (! $image) {
             return;
         }
+
+        PublicUpload::delete($image);
 
         $path = $image;
 
@@ -125,11 +126,6 @@ class BlogController extends Controller
         $path = ltrim((string) $path, '/');
 
         if (str_starts_with($path, 'uploads/')) {
-            $relative = substr($path, strlen('uploads/'));
-            if ($relative !== '' && Storage::disk('uploads')->exists($relative)) {
-                Storage::disk('uploads')->delete($relative);
-            }
-
             return;
         }
 

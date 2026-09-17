@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Destination;
 use App\Models\TravelPackage;
+use App\Support\PublicUpload;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -83,8 +84,7 @@ class PackageController extends Controller
         if ($mode === 'upload') {
             if ($request->hasFile('image_file')) {
                 $this->deleteStoredImage($package?->image);
-                $path = $request->file('image_file')->store('packages', 'uploads');
-                $image = asset('uploads/'.$path);
+                $image = PublicUpload::store($request->file('image_file'), 'packages');
             } elseif (! $package) {
                 throw ValidationException::withMessages([
                     'image_file' => 'Please upload a package image.',
@@ -152,6 +152,8 @@ class PackageController extends Controller
             return;
         }
 
+        PublicUpload::delete($image);
+
         $path = $image;
 
         if (str_starts_with($image, 'http://') || str_starts_with($image, 'https://') || str_starts_with($image, '//')) {
@@ -161,11 +163,6 @@ class PackageController extends Controller
         $path = ltrim((string) $path, '/');
 
         if (str_starts_with($path, 'uploads/')) {
-            $relative = substr($path, strlen('uploads/'));
-            if ($relative !== '' && Storage::disk('uploads')->exists($relative)) {
-                Storage::disk('uploads')->delete($relative);
-            }
-
             return;
         }
 
