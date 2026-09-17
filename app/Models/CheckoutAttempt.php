@@ -19,6 +19,7 @@ class CheckoutAttempt extends Model
         'amount',
         'currency',
         'stripe_checkout_session_id',
+        'paypal_order_id',
         'payload',
         'status',
         'completed_at',

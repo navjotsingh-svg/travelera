@@ -97,10 +97,10 @@
             </div>
 
             <button class="w-full rounded-full bg-teal-600 py-3 font-semibold text-white hover:bg-teal-500">
-                {{ ! empty($stripeEnabled) ? 'Pay securely with Stripe' : 'Confirm booking' }}
+                {{ ! empty($paypalEnabled) ? 'Pay securely with PayPal' : 'Confirm booking' }}
             </button>
-            @if (! empty($stripeEnabled))
-                <p class="text-center text-xs text-slate-500">Card payment is processed on Stripe’s secure checkout.</p>
+            @if (! empty($paypalEnabled))
+                <p class="text-center text-xs text-slate-500">Payment is processed on PayPal’s secure checkout.</p>
             @endif
         </form>
     </div>

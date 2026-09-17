@@ -142,7 +142,7 @@ class BookingFulfillmentService
             );
             $flight = $this->duffel->offer($claim['offer_id']);
         } catch (DuffelException $exception) {
-            Log::error('Duffel fulfillment failed after Stripe payment', [
+            Log::error('Duffel fulfillment failed after PayPal payment', [
                 'booking_id' => $claim['booking_id'],
                 'message' => $exception->getMessage(),
             ]);
@@ -184,7 +184,8 @@ class BookingFulfillmentService
                 $booking->update([
                     'duffel_order_id' => $order['id'] ?? null,
                     'airline_pnr' => $order['booking_reference'] ?? null,
-                    'total_amount' => $order['total_amount'] ?? $booking->total_amount,
+                    'base_amount' => $order['total_amount'] ?? $booking->base_amount ?? $booking->total_amount,
+                    'total_amount' => $booking->total_amount,
                     'currency' => $order['total_currency'] ?? $booking->currency,
                     'status' => 'confirmed',
                     'payment_status' => $claim['order_type'] === 'hold' ? 'pending' : 'paid',

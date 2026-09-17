@@ -12,8 +12,9 @@ use App\Models\TravelPackage;
 use App\Services\BookingFulfillmentService;
 use App\Services\Duffel\DuffelException;
 use App\Services\Duffel\DuffelFlightService;
-use App\Services\Stripe\StripeException;
-use App\Services\Stripe\StripePaymentService;
+use App\Services\PayPal\PayPalException;
+use App\Services\PayPal\PayPalPaymentService;
+use App\Services\PlatformFeeService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -23,8 +24,9 @@ use Illuminate\View\View;
 class BookingController extends Controller
 {
     public function __construct(
-        private readonly StripePaymentService $stripe,
+        private readonly PayPalPaymentService $paypal,
         private readonly BookingFulfillmentService $fulfillment,
+        private readonly PlatformFeeService $platformFee,
     ) {}
 
     public function index(Request $request): View
@@ -47,7 +49,7 @@ class BookingController extends Controller
         return view('bookings.create', [
             'bookable' => $bookable,
             'type' => $request->string('type')->toString(),
-            'stripeEnabled' => $this->stripe->configured(),
+            'paypalEnabled' => $this->paypal->configured(),
         ]);
     }
 
@@ -75,7 +77,8 @@ class BookingController extends Controller
         abort_unless($bookable, 404);
 
         $total = $this->calculateTotal($bookable, $validated);
-        $currency = strtoupper((string) config('stripe.currency', 'inr'));
+        $currency = strtoupper((string) config('paypal.currency', 'USD'));
+        $pricing = $this->platformFee->breakdown($total);
 
         $booking = Booking::query()->create([
             'user_id' => $request->user()->id,
@@ -92,14 +95,17 @@ class BookingController extends Controller
             'drop_location' => $validated['drop_location'] ?? null,
             'distance_km' => $validated['distance_km'] ?? null,
             'cabin_class' => $bookable instanceof Flight ? $bookable->cabin_class : null,
-            'total_amount' => $total,
+            'base_amount' => $pricing['base_amount'],
+            'platform_fee_percent' => $pricing['platform_fee_percent'],
+            'platform_fee_amount' => $pricing['platform_fee_amount'],
+            'total_amount' => $pricing['total_amount'],
             'currency' => $currency,
             'status' => 'pending',
             'payment_status' => 'pending',
             'notes' => $validated['notes'] ?? null,
         ]);
 
-        if (! $this->stripe->configured()) {
+        if (! $this->paypal->configured()) {
             $booking = $this->fulfillment->fulfillPaidBooking($booking);
 
             return redirect()
@@ -108,35 +114,35 @@ class BookingController extends Controller
         }
 
         try {
-            $session = $this->stripe->createCheckoutSession(
+            $order = $this->paypal->createOrder(
                 $booking,
-                route('payments.success', absolute: true).'?session_id={CHECKOUT_SESSION_ID}',
-                route('payments.cancel', absolute: true).'?session_id={CHECKOUT_SESSION_ID}',
+                route('payments.success', absolute: true),
+                route('payments.cancel', absolute: true),
                 [
                     'name' => $booking->title(),
                     'description' => 'Travelera '.$booking->typeLabel().' booking',
                 ],
                 ['provider' => 'local'],
             );
-        } catch (StripeException $exception) {
+        } catch (PayPalException $exception) {
             $booking->update(['payment_status' => 'failed', 'status' => 'cancelled']);
 
             return back()->withErrors(['payment' => $exception->getMessage()])->withInput();
         }
 
-        $booking->update(['stripe_checkout_session_id' => $session->id]);
+        $booking->update(['paypal_order_id' => $order['id']]);
 
         CheckoutAttempt::query()->create([
             'user_id' => $request->user()->id,
             'booking_id' => $booking->id,
             'amount' => $booking->total_amount,
             'currency' => $booking->currency,
-            'stripe_checkout_session_id' => $session->id,
+            'paypal_order_id' => $order['id'],
             'status' => 'awaiting_payment',
             'payload' => ['type' => $validated['type'], 'id' => $validated['id']],
         ]);
 
-        return redirect()->away($session->url);
+        return redirect()->away($order['approve_url']);
     }
 
     public function show(Request $request, Booking $booking): View

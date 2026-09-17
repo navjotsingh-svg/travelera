@@ -30,11 +30,16 @@ class Booking extends Model
         'distance_km',
         'cabin_class',
         'total_amount',
+        'base_amount',
+        'platform_fee_percent',
+        'platform_fee_amount',
         'currency',
         'status',
         'payment_status',
         'stripe_checkout_session_id',
         'stripe_payment_intent_id',
+        'paypal_order_id',
+        'paypal_capture_id',
         'notes',
         'snapshot',
     ];
@@ -46,6 +51,9 @@ class Booking extends Model
             'check_in' => 'date',
             'check_out' => 'date',
             'total_amount' => 'decimal:2',
+            'base_amount' => 'decimal:2',
+            'platform_fee_percent' => 'decimal:2',
+            'platform_fee_amount' => 'decimal:2',
             'snapshot' => 'array',
         ];
     }

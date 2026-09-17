@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Booking;
 use App\Models\CheckoutAttempt;
 use App\Models\Flight;
+use App\Models\SavedPassenger;
 use App\Services\BookingFulfillmentService;
 use App\Services\Duffel\DuffelException;
 use App\Services\Duffel\DuffelFlightService;
-use App\Services\Stripe\StripeException;
-use App\Services\Stripe\StripePaymentService;
+use App\Services\PayPal\PayPalException;
+use App\Services\PayPal\PayPalPaymentService;
+use App\Services\PlatformFeeService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -18,8 +20,9 @@ class FlightBookingController extends Controller
 {
     public function __construct(
         private readonly DuffelFlightService $duffel,
-        private readonly StripePaymentService $stripe,
+        private readonly PayPalPaymentService $paypal,
         private readonly BookingFulfillmentService $fulfillment,
+        private readonly PlatformFeeService $platformFee,
     ) {}
 
     public function create(string $offer): View|RedirectResponse
@@ -54,10 +57,17 @@ class FlightBookingController extends Controller
         return view('flights.book', [
             'flight' => $flight,
             'seatMaps' => $seatMaps,
-            'stripeEnabled' => $this->stripe->configured(),
+            'paypalEnabled' => $this->paypal->configured(),
+            'platformFeePercent' => $this->platformFee->percent(),
             'defaultPhone' => filled(auth()->user()?->phone)
                 ? $this->duffel->e164(auth()->user()->phone)
                 : '',
+            'savedPassengers' => auth()->user()
+                ?->savedPassengers()
+                ->get()
+                ->map(fn (SavedPassenger $passenger) => $passenger->toFormArray())
+                ->values()
+                ->all() ?? [],
         ]);
     }
 
@@ -105,6 +115,8 @@ class FlightBookingController extends Controller
             })
             ->all();
 
+        $this->rememberPassengers($request->user()->id, $passengers);
+
         $services = $validated['services'] ?? [];
         $orderType = $validated['payment_choice'] === 'hold' ? 'hold' : 'instant';
 
@@ -116,12 +128,14 @@ class FlightBookingController extends Controller
 
         $lead = $passengers[0];
         $localFlight = $this->storeLocalFlight($flight);
+        $pricing = $this->platformFee->breakdown($quote['total_amount']);
         $checkoutPayload = [
             'passengers' => $passengers,
             'services' => $services,
             'selected_services' => $quote['selected_services'],
             'order_type' => $orderType,
             'payment_choice' => $validated['payment_choice'],
+            'pricing' => $pricing,
         ];
 
         $booking = Booking::query()->create([
@@ -136,7 +150,10 @@ class FlightBookingController extends Controller
             'travelers' => $passengerCount,
             'travel_date' => optional($flight['departure_at'])?->toDateString(),
             'cabin_class' => $flight['cabin_class'],
-            'total_amount' => $quote['total_amount'],
+            'base_amount' => $pricing['base_amount'],
+            'platform_fee_percent' => $pricing['platform_fee_percent'],
+            'platform_fee_amount' => $pricing['platform_fee_amount'],
+            'total_amount' => $pricing['total_amount'],
             'currency' => $quote['total_currency'],
             'status' => 'pending',
             'payment_status' => 'pending',
@@ -159,7 +176,7 @@ class FlightBookingController extends Controller
             'flight_number' => $flight['flight_number'] ?? null,
             'origin' => $flight['origin'] ?? null,
             'destination' => $flight['destination'] ?? null,
-            'amount' => $quote['total_amount'],
+            'amount' => $pricing['total_amount'],
             'currency' => $quote['total_currency'],
             'payload' => $checkoutPayload,
             'status' => 'awaiting_payment',
@@ -174,8 +191,8 @@ class FlightBookingController extends Controller
             ], $attemptData));
         }
 
-        // Hold orders skip Stripe and create a Duffel hold immediately.
-        if ($orderType === 'hold' || ! $this->stripe->configured()) {
+        // Hold orders skip PayPal and create a Duffel hold immediately.
+        if ($orderType === 'hold' || ! $this->paypal->configured()) {
             try {
                 $booking = $this->fulfillment->fulfillPaidBooking($booking);
             } catch (DuffelException $exception) {
@@ -187,7 +204,7 @@ class FlightBookingController extends Controller
             $message = $orderType === 'hold'
                 ? 'Seat held successfully. Complete payment before the hold expires.'
                 : 'Your Duffel flight is confirmed'.($booking->airline_pnr ? '. Airline PNR: '.$booking->airline_pnr : '.')
-                    .($this->stripe->configured() ? '' : ' (Stripe is disabled — booked without card charge.)');
+                    .($this->paypal->configured() ? '' : ' (PayPal is disabled — booked without charge.)');
 
             return redirect()
                 ->route('bookings.show', $booking)
@@ -195,10 +212,10 @@ class FlightBookingController extends Controller
         }
 
         try {
-            $session = $this->stripe->createCheckoutSession(
+            $order = $this->paypal->createOrder(
                 $booking,
-                route('payments.success', absolute: true).'?session_id={CHECKOUT_SESSION_ID}',
-                route('payments.cancel', absolute: true).'?session_id={CHECKOUT_SESSION_ID}',
+                route('payments.success', absolute: true),
+                route('payments.cancel', absolute: true),
                 [
                     'name' => $flight['airline'].' '.$flight['flight_number'],
                     'description' => $flight['origin'].' → '.$flight['destination'],
@@ -208,21 +225,21 @@ class FlightBookingController extends Controller
                     'provider' => 'duffel',
                 ],
             );
-        } catch (StripeException $exception) {
+        } catch (PayPalException $exception) {
             $booking->update(['payment_status' => 'failed', 'status' => 'cancelled']);
             $attempt->update(['status' => 'abandoned']);
 
             return back()->withErrors(['offer' => $exception->getMessage()])->withInput();
         }
 
-        $booking->update(['stripe_checkout_session_id' => $session->id]);
+        $booking->update(['paypal_order_id' => $order['id']]);
         $attempt->update([
-            'stripe_checkout_session_id' => $session->id,
+            'paypal_order_id' => $order['id'],
             'booking_id' => $booking->id,
             'status' => 'awaiting_payment',
         ]);
 
-        return redirect()->away($session->url);
+        return redirect()->away($order['approve_url']);
     }
 
     private function storeLocalFlight(array $offer): Flight
@@ -241,6 +258,40 @@ class FlightBookingController extends Controller
             'price' => $offer['total_amount'],
             'seats_available' => 0,
         ]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $passengers
+     */
+    private function rememberPassengers(int $userId, array $passengers): void
+    {
+        foreach ($passengers as $passenger) {
+            $given = $this->onlyLetters((string) ($passenger['given_name'] ?? ''));
+            $family = $this->onlyLetters((string) ($passenger['family_name'] ?? ''));
+            $bornOn = $passenger['born_on'] ?? null;
+
+            if ($given === '' || $family === '' || ! filled($bornOn)) {
+                continue;
+            }
+
+            SavedPassenger::query()->updateOrCreate(
+                [
+                    'user_id' => $userId,
+                    'given_name' => $given,
+                    'family_name' => $family,
+                    'born_on' => $bornOn,
+                ],
+                [
+                    'title' => $passenger['title'] ?? 'mr',
+                    'gender' => $passenger['gender'] ?? 'm',
+                    'email' => $passenger['email'] ?? null,
+                    'phone_number' => $passenger['phone_number'] ?? null,
+                    'passport_country' => $passenger['passport_country'] ?? null,
+                    'passport_number' => $passenger['passport_number'] ?? null,
+                    'passport_expiry' => $passenger['passport_expiry'] ?? null,
+                ]
+            );
+        }
     }
 
     private function onlyLetters(string $value): string

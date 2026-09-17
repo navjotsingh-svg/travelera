@@ -31,7 +31,7 @@ Route::middleware('auth')->group(function () {
 });
 Route::get('/flights/{flight}', [FlightController::class, 'show'])->name('flights.show');
 
-Route::post('/stripe/webhook', [\App\Http\Controllers\PaymentController::class, 'webhook'])
+Route::post('/paypal/webhook', [\App\Http\Controllers\PaymentController::class, 'webhook'])
     ->name('payments.webhook');
 
 Route::middleware('auth')->group(function () {

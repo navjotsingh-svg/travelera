@@ -161,7 +161,93 @@ document.addEventListener('alpine:init', () => {
             currency: config.currency || 'USD',
             paymentChoice: config.paymentChoice || 'pay_now',
             supportsHold: Boolean(config.supportsHold),
-            stripeEnabled: Boolean(config.stripeEnabled),
+            paypalEnabled: Boolean(config.paypalEnabled),
+            platformFeePercent: Number(config.platformFeePercent || 0),
+            savedPassengers: config.savedPassengers || [],
+            passengerForms: [],
+
+            init() {
+                const slots = Number(config.passengerSlots || (config.passengers || []).length || 1);
+                const oldPassengers = config.oldPassengers || [];
+                const defaults = config.defaultPassenger || {};
+
+                this.passengerForms = Array.from({ length: slots }, (_, index) => {
+                    const old = oldPassengers[index] || {};
+                    const base = index === 0 ? defaults : {
+                        title: 'mr',
+                        given_name: '',
+                        family_name: '',
+                        gender: 'm',
+                        born_on: '',
+                        email: defaults.email || '',
+                        phone_number: '',
+                        passport_country: '',
+                        passport_number: '',
+                        passport_expiry: '',
+                    };
+
+                    return {
+                        selectedId: 'new',
+                        title: old.title || base.title || 'mr',
+                        given_name: old.given_name || base.given_name || '',
+                        family_name: old.family_name || base.family_name || '',
+                        gender: old.gender || base.gender || 'm',
+                        born_on: old.born_on || base.born_on || '',
+                        email: old.email || base.email || '',
+                        phone_number: old.phone_number || base.phone_number || '',
+                        passport_country: old.passport_country || base.passport_country || '',
+                        passport_number: old.passport_number || base.passport_number || '',
+                        passport_expiry: old.passport_expiry || base.passport_expiry || '',
+                    };
+                });
+            },
+
+            blankPassengerForm(email = '') {
+                return {
+                    selectedId: 'new',
+                    title: 'mr',
+                    given_name: '',
+                    family_name: '',
+                    gender: 'm',
+                    born_on: '',
+                    email: email || '',
+                    phone_number: '',
+                    passport_country: '',
+                    passport_number: '',
+                    passport_expiry: '',
+                };
+            },
+
+            selectSavedPassenger(index, id) {
+                if (! this.passengerForms[index]) {
+                    return;
+                }
+
+                if (id === 'new') {
+                    const email = this.passengerForms[index].email || (config.defaultPassenger || {}).email || '';
+                    this.passengerForms[index] = this.blankPassengerForm(email);
+                    return;
+                }
+
+                const saved = this.savedPassengers.find((item) => String(item.id) === String(id));
+                if (! saved) {
+                    return;
+                }
+
+                this.passengerForms[index] = {
+                    selectedId: saved.id,
+                    title: saved.title || 'mr',
+                    given_name: saved.given_name || '',
+                    family_name: saved.family_name || '',
+                    gender: saved.gender || 'm',
+                    born_on: saved.born_on || '',
+                    email: saved.email || (config.defaultPassenger || {}).email || '',
+                    phone_number: saved.phone_number || '',
+                    passport_country: saved.passport_country || '',
+                    passport_number: saved.passport_number || '',
+                    passport_expiry: saved.passport_expiry || '',
+                };
+            },
 
             openSeats() {
                 this.seatsOpen = true;
@@ -295,8 +381,16 @@ document.addEventListener('alpine:init', () => {
                 return bags + seats;
             },
 
-            grandTotal() {
+            subtotal() {
                 return this.baseAmount + this.extrasTotal();
+            },
+
+            platformFeeAmount() {
+                return Math.round(this.subtotal() * (this.platformFeePercent / 100) * 100) / 100;
+            },
+
+            grandTotal() {
+                return Math.round((this.subtotal() + this.platformFeeAmount()) * 100) / 100;
             },
 
             formatMoney(amount) {

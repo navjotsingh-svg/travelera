@@ -125,6 +125,16 @@
                     <dt class="text-sm text-slate-500">Total paid</dt>
                     <dd class="font-semibold"><x-money :amount="$booking->total_amount" :currency="$booking->currency ?? 'INR'" /></dd>
                 </div>
+                @if ((float) ($booking->platform_fee_amount ?? 0) > 0)
+                    <div class="rounded-2xl bg-slate-50 p-4">
+                        <dt class="text-sm text-slate-500">Fare</dt>
+                        <dd class="font-semibold"><x-money :amount="$booking->base_amount ?? ($booking->total_amount - $booking->platform_fee_amount)" :currency="$booking->currency ?? 'INR'" /></dd>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 p-4">
+                        <dt class="text-sm text-slate-500">Platform fee ({{ number_format((float) $booking->platform_fee_percent, 2) }}%)</dt>
+                        <dd class="font-semibold"><x-money :amount="$booking->platform_fee_amount" :currency="$booking->currency ?? 'INR'" /></dd>
+                    </div>
+                @endif
                 <div class="rounded-2xl bg-slate-50 p-4">
                     <dt class="text-sm text-slate-500">Payment</dt>
                     <dd class="font-semibold capitalize">{{ $booking->payment_status }}</dd>
@@ -158,7 +168,12 @@
                         <dd class="font-semibold break-all">{{ $booking->duffel_order_id }}</dd>
                     </div>
                 @endif
-                @if ($booking->stripe_payment_intent_id)
+                @if ($booking->paypal_capture_id || $booking->paypal_order_id)
+                    <div class="rounded-2xl bg-slate-50 p-4 md:col-span-2">
+                        <dt class="text-sm text-slate-500">PayPal payment</dt>
+                        <dd class="font-semibold break-all">{{ $booking->paypal_capture_id ?: $booking->paypal_order_id }}</dd>
+                    </div>
+                @elseif ($booking->stripe_payment_intent_id)
                     <div class="rounded-2xl bg-slate-50 p-4 md:col-span-2">
                         <dt class="text-sm text-slate-500">Stripe payment</dt>
                         <dd class="font-semibold break-all">{{ $booking->stripe_payment_intent_id }}</dd>

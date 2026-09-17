@@ -12,6 +12,10 @@
                 <div><dt>Departure</dt><dd>{{ optional($booking->departureAt())->format('d M Y H:i') ?? '—' }}</dd></div>
                 <div><dt>Arrival</dt><dd>{{ optional($booking->arrivalAt())->format('d M Y H:i') ?? '—' }}</dd></div>
                 <div><dt>Amount</dt><dd>{{ $booking->currency }} {{ number_format((float) $booking->total_amount, 2) }}</dd></div>
+                @if ((float) ($booking->platform_fee_amount ?? 0) > 0)
+                    <div><dt>Base fare</dt><dd>{{ $booking->currency }} {{ number_format((float) ($booking->base_amount ?? 0), 2) }}</dd></div>
+                    <div><dt>Platform fee</dt><dd>{{ number_format((float) $booking->platform_fee_percent, 2) }}% · {{ $booking->currency }} {{ number_format((float) $booking->platform_fee_amount, 2) }}</dd></div>
+                @endif
                 <div><dt>Provider</dt><dd>{{ $booking->provider }}</dd></div>
                 <div><dt>PNR</dt><dd>{{ $booking->airline_pnr ?: '—' }}</dd></div>
             </dl>

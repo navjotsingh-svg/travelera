@@ -24,7 +24,23 @@
             oldServices: {{ Js::from(old('services', [])) }},
             paymentChoice: {{ json_encode($paymentDefault) }},
             supportsHold: {{ $supportsHold ? 'true' : 'false' }},
-            stripeEnabled: {{ ! empty($stripeEnabled) ? 'true' : 'false' }},
+            platformFeePercent: {{ json_encode((float) ($platformFeePercent ?? 0)) }},
+            paypalEnabled: {{ ! empty($paypalEnabled) ? 'true' : 'false' }},
+            savedPassengers: {{ Js::from($savedPassengers ?? []) }},
+            oldPassengers: {{ Js::from(old('passengers', [])) }},
+            defaultPassenger: {{ Js::from([
+                'title' => 'mr',
+                'given_name' => $nameParts[0] ?? '',
+                'family_name' => $nameParts[1] ?? '',
+                'gender' => 'm',
+                'born_on' => '',
+                'email' => auth()->user()->email,
+                'phone_number' => $defaultPhone ?? '',
+                'passport_country' => '',
+                'passport_number' => '',
+                'passport_expiry' => '',
+            ]) }},
+            passengerSlots: {{ json_encode(count($flight['passengers'] ?? [])) }},
         })"
     >
         <div class="duffel-checkout-inner">
@@ -161,51 +177,78 @@
 
                 <section class="duffel-passengers">
                     <h2>Passengers</h2>
-                    @foreach ($flight['passengers'] as $index => $passenger)
+                    <p class="duffel-pax-hint">Select a saved traveller or add someone new — just like your travel wallet.</p>
+
+                    <template x-for="(form, index) in passengerForms" :key="'pax-' + index">
                         <div class="duffel-passenger-block">
-                            <span class="duffel-pax-badge">Adult {{ $index + 1 }}</span>
+                            <div class="duffel-pax-head">
+                                <span class="duffel-pax-badge" x-text="'Adult ' + (index + 1)"></span>
+                            </div>
+
+                            <div class="duffel-saved-pax" x-show="savedPassengers.length" x-cloak>
+                                <p class="duffel-saved-label">Choose traveller</p>
+                                <div class="duffel-saved-grid">
+                                    <button
+                                        type="button"
+                                        class="duffel-saved-chip is-new"
+                                        :class="{ 'is-active': form.selectedId === 'new' }"
+                                        @click="selectSavedPassenger(index, 'new')"
+                                    >
+                                        <span class="duffel-saved-plus">+</span>
+                                        <span>Add new</span>
+                                    </button>
+                                    <template x-for="saved in savedPassengers" :key="'saved-' + index + '-' + saved.id">
+                                        <button
+                                            type="button"
+                                            class="duffel-saved-chip"
+                                            :class="{ 'is-active': String(form.selectedId) === String(saved.id) }"
+                                            @click="selectSavedPassenger(index, saved.id)"
+                                        >
+                                            <strong x-text="saved.label"></strong>
+                                            <small x-text="saved.born_on || 'Saved traveller'"></small>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
 
                             <h3>Personal details</h3>
                             <div class="duffel-fields duffel-fields-3">
                                 <label>
                                     <span>Title *</span>
-                                    <select name="passengers[{{ $index }}][title]" required>
-                                        @foreach (['mr' => 'Mr', 'ms' => 'Ms', 'mrs' => 'Mrs', 'miss' => 'Miss', 'dr' => 'Dr'] as $value => $label)
-                                            <option value="{{ $value }}" @selected(old("passengers.$index.title", 'mr') === $value)>{{ $label }}</option>
-                                        @endforeach
+                                    <select :name="`passengers[${index}][title]`" x-model="form.title" required>
+                                        <option value="mr">Mr</option>
+                                        <option value="ms">Ms</option>
+                                        <option value="mrs">Mrs</option>
+                                        <option value="miss">Miss</option>
+                                        <option value="dr">Dr</option>
                                     </select>
                                 </label>
                                 <label>
                                     <span>Given name *</span>
-                                    <input name="passengers[{{ $index }}][given_name]" value="{{ old("passengers.$index.given_name", $index === 0 ? ($nameParts[0] ?? '') : '') }}" required>
+                                    <input :name="`passengers[${index}][given_name]`" x-model="form.given_name" required>
                                 </label>
                                 <label>
                                     <span>Family name *</span>
-                                    <input name="passengers[{{ $index }}][family_name]" value="{{ old("passengers.$index.family_name", $index === 0 ? ($nameParts[1] ?? 'Traveler') : '') }}" required>
+                                    <input :name="`passengers[${index}][family_name]`" x-model="form.family_name" required>
                                 </label>
                                 <label>
                                     <span>Date of birth *</span>
-                                    <input type="date" name="passengers[{{ $index }}][born_on]" value="{{ old("passengers.$index.born_on") }}" max="{{ now()->subYears(12)->toDateString() }}" required>
+                                    <input type="date" :name="`passengers[${index}][born_on]`" x-model="form.born_on" max="{{ now()->subYears(12)->toDateString() }}" required>
                                 </label>
                                 <label>
                                     <span>Gender *</span>
-                                    <select name="passengers[{{ $index }}][gender]" required>
-                                        <option value="m" @selected(old("passengers.$index.gender", 'm') === 'm')>Male</option>
-                                        <option value="f" @selected(old("passengers.$index.gender") === 'f')>Female</option>
+                                    <select :name="`passengers[${index}][gender]`" x-model="form.gender" required>
+                                        <option value="m">Male</option>
+                                        <option value="f">Female</option>
                                     </select>
                                 </label>
                                 <label>
                                     <span>Email *</span>
-                                    <input type="email" name="passengers[{{ $index }}][email]" value="{{ old("passengers.$index.email", auth()->user()->email) }}" required>
+                                    <input type="email" :name="`passengers[${index}][email]`" x-model="form.email" required>
                                 </label>
                                 <label class="duffel-span-2">
                                     <span>Phone *</span>
-                                    <input
-                                        name="passengers[{{ $index }}][phone_number]"
-                                        value="{{ old("passengers.$index.phone_number", $index === 0 ? ($defaultPhone ?? '') : '') }}"
-                                        placeholder="+919876543210"
-                                        required
-                                    >
+                                    <input :name="`passengers[${index}][phone_number]`" x-model="form.phone_number" placeholder="+919876543210" required>
                                 </label>
                             </div>
 
@@ -213,19 +256,19 @@
                             <div class="duffel-fields duffel-fields-2">
                                 <label class="duffel-span-2">
                                     <span>Country of issue</span>
-                                    <input name="passengers[{{ $index }}][passport_country]" value="{{ old("passengers.$index.passport_country") }}" placeholder="India">
+                                    <input :name="`passengers[${index}][passport_country]`" x-model="form.passport_country" placeholder="India">
                                 </label>
                                 <label>
                                     <span>Passport number</span>
-                                    <input name="passengers[{{ $index }}][passport_number]" value="{{ old("passengers.$index.passport_number") }}">
+                                    <input :name="`passengers[${index}][passport_number]`" x-model="form.passport_number">
                                 </label>
                                 <label>
                                     <span>Expiry date</span>
-                                    <input type="date" name="passengers[{{ $index }}][passport_expiry]" value="{{ old("passengers.$index.passport_expiry") }}" min="{{ now()->toDateString() }}">
+                                    <input type="date" :name="`passengers[${index}][passport_expiry]`" x-model="form.passport_expiry" min="{{ now()->toDateString() }}">
                                 </label>
                             </div>
                         </div>
-                    @endforeach
+                    </template>
                 </section>
 
                 <section class="duffel-extras">
@@ -279,9 +322,13 @@
                     <div>
                         <p class="duffel-footer-label">Total</p>
                         <p class="duffel-footer-total" x-text="formatMoney(grandTotal())"></p>
+                        <p class="duffel-footer-fee" x-show="platformFeePercent > 0" x-cloak>
+                            Includes <span x-text="platformFeePercent"></span>% platform fee
+                            (<span x-text="formatMoney(platformFeeAmount())"></span>)
+                        </p>
                     </div>
                     <button type="submit" class="duffel-checkout-submit">
-                        <span x-text="paymentChoice === 'hold' ? 'Hold this fare' : (stripeEnabled ? 'Pay securely with Stripe' : 'Confirm booking')"></span>
+                        <span x-text="paymentChoice === 'hold' ? 'Hold this fare' : (paypalEnabled ? 'Pay securely with PayPal' : 'Confirm booking')"></span>
                         · <span x-text="formatMoney(grandTotal())"></span>
                     </button>
                 </div>

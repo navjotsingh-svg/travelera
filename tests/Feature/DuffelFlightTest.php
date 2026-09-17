@@ -21,7 +21,7 @@ class DuffelFlightTest extends TestCase
             'duffel.version' => 'v2',
             'duffel.timeout' => 10,
             'duffel.payment_type' => 'balance',
-            'stripe.enabled' => false,
+            'paypal.enabled' => false,
         ]);
     }
 

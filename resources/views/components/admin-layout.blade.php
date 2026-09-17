@@ -30,6 +30,9 @@
                 <a href="{{ route('admin.dashboard') }}" class="{{ request()->routeIs('admin.dashboard') ? 'is-active' : '' }}">
                     <span class="admin-nav-ico">⌂</span> Dashboard
                 </a>
+                <a href="{{ route('admin.settings.edit') }}" class="{{ request()->routeIs('admin.settings.*') ? 'is-active' : '' }}">
+                    <span class="admin-nav-ico">⚙</span> Settings
+                </a>
 
                 <p class="admin-nav-label">Operations</p>
                 <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'is-active' : '' }}">

@@ -53,4 +53,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(Booking::class);
     }
+
+    public function savedPassengers(): HasMany
+    {
+        return $this->hasMany(SavedPassenger::class)->latest();
+    }
 }

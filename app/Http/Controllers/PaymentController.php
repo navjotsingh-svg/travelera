@@ -6,8 +6,8 @@ use App\Models\Booking;
 use App\Models\CheckoutAttempt;
 use App\Services\BookingFulfillmentService;
 use App\Services\Duffel\DuffelException;
-use App\Services\Stripe\StripeException;
-use App\Services\Stripe\StripePaymentService;
+use App\Services\PayPal\PayPalException;
+use App\Services\PayPal\PayPalPaymentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -18,43 +18,50 @@ use Illuminate\View\View;
 class PaymentController extends Controller
 {
     public function __construct(
-        private readonly StripePaymentService $stripe,
+        private readonly PayPalPaymentService $paypal,
         private readonly BookingFulfillmentService $fulfillment,
     ) {}
 
     public function success(Request $request): RedirectResponse|View
     {
-        $sessionId = (string) $request->query('session_id', '');
-        abort_unless($sessionId !== '', 404);
-
-        try {
-            $session = $this->stripe->retrieveCheckoutSession($sessionId);
-        } catch (StripeException $exception) {
-            return redirect()
-                ->route('bookings.index')
-                ->with('status', $exception->getMessage());
-        }
+        $orderId = (string) ($request->query('token') ?: $request->query('order_id', ''));
+        abort_unless($orderId !== '', 404);
 
         $booking = Booking::query()
-            ->where('stripe_checkout_session_id', $session->id)
+            ->where('paypal_order_id', $orderId)
             ->first();
 
-        if (! $booking && filled($session->client_reference_id)) {
-            $booking = Booking::query()->find($session->client_reference_id);
+        try {
+            $order = $this->paypal->retrieveOrder($orderId);
+
+            if ($order['paid']) {
+                // Already captured (webhook or prior refresh).
+            } elseif (in_array(strtoupper($order['status']), ['APPROVED', 'CREATED', 'SAVED', 'PAYER_ACTION_REQUIRED'], true)) {
+                $order = $this->paypal->captureOrder($orderId);
+            }
+        } catch (PayPalException $exception) {
+            Log::warning('PayPal success capture failed', [
+                'order_id' => $orderId,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return redirect()
+                ->route('bookings.index')
+                ->with('status', 'PayPal payment could not be confirmed: '.$exception->getMessage());
+        }
+
+        if (! $booking && filled($order['booking_id'])) {
+            $booking = Booking::query()->find($order['booking_id']);
         }
 
         abort_unless($booking && $booking->user_id === $request->user()?->id, 404);
 
-        $paymentIntentId = is_string($session->payment_intent)
-            ? $session->payment_intent
-            : ($session->payment_intent->id ?? null);
-
         $booking->update([
-            'stripe_checkout_session_id' => $session->id,
-            'stripe_payment_intent_id' => $paymentIntentId,
+            'paypal_order_id' => $order['id'],
+            'paypal_capture_id' => $order['capture_id'] ?? $booking->paypal_capture_id,
         ]);
 
-        if (($session->payment_status ?? '') !== 'paid') {
+        if (! $order['paid']) {
             $booking->update(['payment_status' => 'pending']);
 
             return view('payments.pending', compact('booking'));
@@ -97,12 +104,12 @@ class PaymentController extends Controller
 
     public function cancel(Request $request): RedirectResponse
     {
-        $sessionId = (string) $request->query('session_id', '');
+        $orderId = (string) ($request->query('token') ?: $request->query('order_id', ''));
 
         $booking = null;
-        if ($sessionId !== '') {
+        if ($orderId !== '') {
             $booking = Booking::query()
-                ->where('stripe_checkout_session_id', $sessionId)
+                ->where('paypal_order_id', $orderId)
                 ->where('user_id', $request->user()->id)
                 ->first();
         }
@@ -116,7 +123,7 @@ class PaymentController extends Controller
             CheckoutAttempt::query()
                 ->where('booking_id', $booking->id)
                 ->orWhere(function ($query) use ($booking) {
-                    $query->where('stripe_checkout_session_id', $booking->stripe_checkout_session_id);
+                    $query->where('paypal_order_id', $booking->paypal_order_id);
                 })
                 ->update(['status' => 'abandoned']);
         }
@@ -134,38 +141,66 @@ class PaymentController extends Controller
 
     public function webhook(Request $request): Response
     {
-        $signature = (string) $request->header('Stripe-Signature', '');
-
         try {
-            $event = $this->stripe->constructWebhookEvent($request->getContent(), $signature);
-        } catch (StripeException $exception) {
-            Log::warning('Stripe webhook rejected', ['message' => $exception->getMessage()]);
+            $event = $this->paypal->verifyWebhook($request->getContent(), $request->headers->all());
+        } catch (PayPalException $exception) {
+            Log::warning('PayPal webhook rejected', ['message' => $exception->getMessage()]);
 
             return response($exception->getMessage(), 400);
         }
 
-        if ($event->type === 'checkout.session.completed') {
-            $session = $event->data->object;
-            $booking = Booking::query()
-                ->where('stripe_checkout_session_id', $session->id)
-                ->first();
+        $eventType = (string) ($event['event_type'] ?? '');
 
-            if (! $booking && filled($session->client_reference_id ?? null)) {
-                $booking = Booking::query()->find($session->client_reference_id);
+        if (in_array($eventType, [
+            'CHECKOUT.ORDER.APPROVED',
+            'PAYMENT.CAPTURE.COMPLETED',
+            'CHECKOUT.ORDER.COMPLETED',
+        ], true)) {
+            $resource = $event['resource'] ?? [];
+            $orderId = null;
+            $captureId = null;
+            $bookingId = null;
+
+            if ($eventType === 'PAYMENT.CAPTURE.COMPLETED') {
+                $captureId = $resource['id'] ?? null;
+                $orderId = data_get($resource, 'supplementary_data.related_ids.order_id')
+                    ?? data_get($resource, 'custom_id');
+                $bookingId = data_get($resource, 'custom_id');
+            } else {
+                $orderId = $resource['id'] ?? null;
+                $bookingId = data_get($resource, 'purchase_units.0.custom_id');
+                $captureId = data_get($resource, 'purchase_units.0.payments.captures.0.id');
             }
 
-            if ($booking && ($session->payment_status ?? '') === 'paid') {
-                $paymentIntentId = is_string($session->payment_intent ?? null)
-                    ? $session->payment_intent
-                    : ($session->payment_intent->id ?? null);
+            $booking = null;
+            if (filled($orderId)) {
+                $booking = Booking::query()->where('paypal_order_id', $orderId)->first();
+            }
+            if (! $booking && filled($bookingId) && is_numeric($bookingId)) {
+                $booking = Booking::query()->find($bookingId);
+            }
+
+            if ($booking) {
+                if ($eventType === 'CHECKOUT.ORDER.APPROVED' && filled($orderId)) {
+                    try {
+                        $captured = $this->paypal->captureOrder((string) $orderId);
+                        $captureId = $captured['capture_id'] ?? $captureId;
+                        $orderId = $captured['id'] ?: $orderId;
+                    } catch (PayPalException $exception) {
+                        Log::warning('PayPal webhook capture skipped', [
+                            'booking_id' => $booking->id,
+                            'message' => $exception->getMessage(),
+                        ]);
+                    }
+                }
 
                 $booking->update([
-                    'stripe_checkout_session_id' => $session->id,
-                    'stripe_payment_intent_id' => $paymentIntentId ?? $booking->stripe_payment_intent_id,
+                    'paypal_order_id' => $orderId ?: $booking->paypal_order_id,
+                    'paypal_capture_id' => $captureId ?: $booking->paypal_capture_id,
                 ]);
 
                 try {
-                    $this->fulfillment->fulfillPaidBooking($booking);
+                    $this->fulfillment->fulfillPaidBooking($booking->fresh());
                 } catch (DuffelException $exception) {
                     Log::error('Webhook fulfillment failed', [
                         'booking_id' => $booking->id,

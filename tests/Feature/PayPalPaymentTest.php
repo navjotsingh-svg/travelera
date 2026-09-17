@@ -3,14 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Services\Stripe\StripePaymentService;
+use App\Services\PayPal\PayPalPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Mockery;
-use Stripe\Checkout\Session;
 use Tests\TestCase;
 
-class StripePaymentTest extends TestCase
+class PayPalPaymentTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -18,20 +17,23 @@ class StripePaymentTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+
         config([
             'duffel.access_token' => 'duffel_test_123',
             'duffel.base_url' => 'https://api.duffel.com',
             'duffel.version' => 'v2',
             'duffel.timeout' => 10,
             'duffel.payment_type' => 'balance',
-            'stripe.enabled' => true,
-            'stripe.key' => 'pk_test_123',
-            'stripe.secret' => 'sk_test_123',
-            'stripe.currency' => 'gbp',
+            'paypal.enabled' => true,
+            'paypal.client_id' => 'paypal_client_123',
+            'paypal.client_secret' => 'paypal_secret_123',
+            'paypal.currency' => 'USD',
+            'paypal.mode' => 'sandbox',
         ]);
     }
 
-    public function test_flight_booking_redirects_to_stripe_checkout(): void
+    public function test_flight_booking_redirects_to_paypal_checkout(): void
     {
         Http::fake(function ($request) {
             if (str_contains($request->url(), '/air/offers/off_0001')) {
@@ -45,17 +47,15 @@ class StripePaymentTest extends TestCase
             return Http::response(['errors' => [['message' => 'Unexpected URL: '.$request->url()]]], 500);
         });
 
-        $session = Session::constructFrom([
-            'id' => 'cs_test_123',
-            'object' => 'checkout.session',
-            'url' => 'https://checkout.stripe.com/c/pay/cs_test_123',
-            'payment_status' => 'unpaid',
+        $paypal = Mockery::mock(PayPalPaymentService::class);
+        $paypal->shouldReceive('configured')->andReturn(true);
+        $paypal->shouldReceive('createOrder')->once()->andReturn([
+            'id' => 'PAYPAL-ORDER-123',
+            'status' => 'CREATED',
+            'approve_url' => 'https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL-ORDER-123',
+            'raw' => [],
         ]);
-
-        $stripe = Mockery::mock(StripePaymentService::class);
-        $stripe->shouldReceive('configured')->andReturn(true);
-        $stripe->shouldReceive('createCheckoutSession')->once()->andReturn($session);
-        $this->app->instance(StripePaymentService::class, $stripe);
+        $this->app->instance(PayPalPaymentService::class, $paypal);
 
         $user = User::factory()->create([
             'name' => 'Jane Traveler',
@@ -75,14 +75,14 @@ class StripePaymentTest extends TestCase
             'payment_choice' => 'pay_now',
         ]);
 
-        $response->assertRedirect('https://checkout.stripe.com/c/pay/cs_test_123');
+        $response->assertRedirect('https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL-ORDER-123');
 
         $this->assertDatabaseHas('bookings', [
             'provider' => 'duffel',
             'duffel_offer_id' => 'off_0001',
             'payment_status' => 'pending',
             'status' => 'pending',
-            'stripe_checkout_session_id' => 'cs_test_123',
+            'paypal_order_id' => 'PAYPAL-ORDER-123',
         ]);
     }
 
@@ -94,7 +94,7 @@ class StripePaymentTest extends TestCase
         return [
             'id' => 'off_0001',
             'total_amount' => '450.00',
-            'total_currency' => 'GBP',
+            'total_currency' => 'USD',
             'cabin_class' => 'economy',
             'expires_at' => now()->addMinutes(20)->toIso8601String(),
             'owner' => ['name' => 'British Airways', 'iata_code' => 'BA'],
