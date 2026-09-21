@@ -2,14 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Booking;
 use App\Models\CheckoutAttempt;
-use App\Models\Flight;
 use App\Models\SavedPassenger;
-use App\Services\BookingFulfillmentService;
 use App\Services\Duffel\DuffelException;
 use App\Services\Duffel\DuffelFlightService;
-use App\Services\PayPal\PayPalException;
+use App\Services\FlightCheckoutService;
 use App\Services\PayPal\PayPalPaymentService;
 use App\Services\PlatformFeeService;
 use Illuminate\Http\RedirectResponse;
@@ -21,8 +18,8 @@ class FlightBookingController extends Controller
     public function __construct(
         private readonly DuffelFlightService $duffel,
         private readonly PayPalPaymentService $paypal,
-        private readonly BookingFulfillmentService $fulfillment,
         private readonly PlatformFeeService $platformFee,
+        private readonly FlightCheckoutService $checkout,
     ) {}
 
     public function create(string $offer): View|RedirectResponse
@@ -105,197 +102,18 @@ class FlightBookingController extends Controller
             return back()->withErrors(['offer' => 'This fare cannot be held. Please pay now to confirm.'])->withInput();
         }
 
-        $passengers = collect($validated['passengers'])
-            ->map(function (array $passenger) {
-                $passenger['phone_number'] = $this->duffel->e164($passenger['phone_number']);
-                $passenger['given_name'] = $this->onlyLetters($passenger['given_name']);
-                $passenger['family_name'] = $this->onlyLetters($passenger['family_name']);
+        $result = $this->checkout->start($request->user(), $offer, $validated);
 
-                return $passenger;
-            })
-            ->all();
-
-        $this->rememberPassengers($request->user()->id, $passengers);
-
-        $services = $validated['services'] ?? [];
-        $orderType = $validated['payment_choice'] === 'hold' ? 'hold' : 'instant';
-
-        try {
-            $quote = $this->duffel->quote($offer, $services);
-        } catch (DuffelException $exception) {
-            return back()->withErrors(['offer' => $exception->getMessage()])->withInput();
+        if (! ($result['ok'] ?? false)) {
+            return back()->withErrors(['offer' => $result['error'] ?? 'Checkout failed.'])->withInput();
         }
 
-        $lead = $passengers[0];
-        $localFlight = $this->storeLocalFlight($flight);
-        $pricing = $this->platformFee->breakdown($quote['total_amount']);
-        $checkoutPayload = [
-            'passengers' => $passengers,
-            'services' => $services,
-            'selected_services' => $quote['selected_services'],
-            'order_type' => $orderType,
-            'payment_choice' => $validated['payment_choice'],
-            'pricing' => $pricing,
-        ];
-
-        $booking = Booking::query()->create([
-            'user_id' => $request->user()->id,
-            'bookable_type' => Flight::class,
-            'bookable_id' => $localFlight->id,
-            'provider' => 'duffel',
-            'duffel_offer_id' => $offer,
-            'guest_name' => $lead['given_name'].' '.$lead['family_name'],
-            'guest_email' => $lead['email'],
-            'guest_phone' => $lead['phone_number'],
-            'travelers' => $passengerCount,
-            'travel_date' => optional($flight['departure_at'])?->toDateString(),
-            'cabin_class' => $flight['cabin_class'],
-            'base_amount' => $pricing['base_amount'],
-            'platform_fee_percent' => $pricing['platform_fee_percent'],
-            'platform_fee_amount' => $pricing['platform_fee_amount'],
-            'total_amount' => $pricing['total_amount'],
-            'currency' => $quote['total_currency'],
-            'status' => 'pending',
-            'payment_status' => 'pending',
-            'snapshot' => array_merge(
-                $this->duffel->snapshotFromOffer($flight, $quote['selected_services']),
-                ['checkout' => $checkoutPayload]
-            ),
-        ]);
-
-        $attempt = CheckoutAttempt::query()
-            ->where('user_id', $request->user()->id)
-            ->where('offer_id', $offer)
-            ->whereIn('status', ['started', 'awaiting_payment'])
-            ->latest('id')
-            ->first();
-
-        $attemptData = [
-            'booking_id' => $booking->id,
-            'airline' => $flight['airline'] ?? null,
-            'flight_number' => $flight['flight_number'] ?? null,
-            'origin' => $flight['origin'] ?? null,
-            'destination' => $flight['destination'] ?? null,
-            'amount' => $pricing['total_amount'],
-            'currency' => $quote['total_currency'],
-            'payload' => $checkoutPayload,
-            'status' => 'awaiting_payment',
-        ];
-
-        if ($attempt) {
-            $attempt->update($attemptData);
-        } else {
-            $attempt = CheckoutAttempt::query()->create(array_merge([
-                'user_id' => $request->user()->id,
-                'offer_id' => $offer,
-            ], $attemptData));
+        if (($result['kind'] ?? '') === 'paypal' && filled($result['approve_url'] ?? null)) {
+            return redirect()->away($result['approve_url']);
         }
 
-        // Hold orders skip PayPal and create a Duffel hold immediately.
-        if ($orderType === 'hold' || ! $this->paypal->configured()) {
-            try {
-                $booking = $this->fulfillment->fulfillPaidBooking($booking);
-            } catch (DuffelException $exception) {
-                $attempt->update(['status' => 'abandoned']);
-
-                return back()->withErrors(['offer' => $exception->getMessage()])->withInput();
-            }
-
-            $message = $orderType === 'hold'
-                ? 'Seat held successfully. Complete payment before the hold expires.'
-                : 'Your Duffel flight is confirmed'.($booking->airline_pnr ? '. Airline PNR: '.$booking->airline_pnr : '.')
-                    .($this->paypal->configured() ? '' : ' (PayPal is disabled — booked without charge.)');
-
-            return redirect()
-                ->route('bookings.show', $booking)
-                ->with('status', $message);
-        }
-
-        try {
-            $order = $this->paypal->createOrder(
-                $booking,
-                route('payments.success', absolute: true),
-                route('payments.cancel', absolute: true),
-                [
-                    'name' => $flight['airline'].' '.$flight['flight_number'],
-                    'description' => $flight['origin'].' → '.$flight['destination'],
-                ],
-                [
-                    'offer_id' => $offer,
-                    'provider' => 'duffel',
-                ],
-            );
-        } catch (PayPalException $exception) {
-            $booking->update(['payment_status' => 'failed', 'status' => 'cancelled']);
-            $attempt->update(['status' => 'abandoned']);
-
-            return back()->withErrors(['offer' => $exception->getMessage()])->withInput();
-        }
-
-        $booking->update(['paypal_order_id' => $order['id']]);
-        $attempt->update([
-            'paypal_order_id' => $order['id'],
-            'booking_id' => $booking->id,
-            'status' => 'awaiting_payment',
-        ]);
-
-        return redirect()->away($order['approve_url']);
-    }
-
-    private function storeLocalFlight(array $offer): Flight
-    {
-        return Flight::query()->create([
-            'airline' => $offer['airline'],
-            'flight_number' => $offer['flight_number'] ?: 'DUFFEL',
-            'origin' => $offer['origin_name'] ?: $offer['origin'],
-            'origin_code' => $offer['origin'] ?: 'XXX',
-            'destination' => $offer['destination_name'] ?: $offer['destination'],
-            'destination_code' => $offer['destination'] ?: 'XXX',
-            'departure_at' => $offer['departure_at'] ?? now()->addDay(),
-            'arrival_at' => $offer['arrival_at'] ?? now()->addDay()->addHours(2),
-            'duration_minutes' => 0,
-            'cabin_class' => is_string($offer['cabin_class']) ? $offer['cabin_class'] : 'economy',
-            'price' => $offer['total_amount'],
-            'seats_available' => 0,
-        ]);
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $passengers
-     */
-    private function rememberPassengers(int $userId, array $passengers): void
-    {
-        foreach ($passengers as $passenger) {
-            $given = $this->onlyLetters((string) ($passenger['given_name'] ?? ''));
-            $family = $this->onlyLetters((string) ($passenger['family_name'] ?? ''));
-            $bornOn = $passenger['born_on'] ?? null;
-
-            if ($given === '' || $family === '' || ! filled($bornOn)) {
-                continue;
-            }
-
-            SavedPassenger::query()->updateOrCreate(
-                [
-                    'user_id' => $userId,
-                    'given_name' => $given,
-                    'family_name' => $family,
-                    'born_on' => $bornOn,
-                ],
-                [
-                    'title' => $passenger['title'] ?? 'mr',
-                    'gender' => $passenger['gender'] ?? 'm',
-                    'email' => $passenger['email'] ?? null,
-                    'phone_number' => $passenger['phone_number'] ?? null,
-                    'passport_country' => $passenger['passport_country'] ?? null,
-                    'passport_number' => $passenger['passport_number'] ?? null,
-                    'passport_expiry' => $passenger['passport_expiry'] ?? null,
-                ]
-            );
-        }
-    }
-
-    private function onlyLetters(string $value): string
-    {
-        return trim((string) preg_replace('/[^A-Za-z \-]/', '', $value));
+        return redirect()
+            ->route('bookings.show', $result['booking_id'])
+            ->with('status', $result['message'] ?? 'Booking updated.');
     }
 }

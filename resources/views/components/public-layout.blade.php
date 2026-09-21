@@ -26,6 +26,7 @@
                     <a class="hover:text-brand-700" href="{{ url('/#services') }}">Services</a>
                     <a class="{{ request()->routeIs('blogs.*') ? 'is-active text-brand-700' : 'hover:text-brand-700' }}" href="{{ route('blogs.index') }}">Blog</a>
                     <a class="{{ request()->routeIs('contact') ? 'is-active text-brand-700' : 'hover:text-brand-700' }}" href="{{ route('contact') }}">Contact</a>
+                    <a class="{{ request()->routeIs('agent.*') ? 'is-active text-brand-700' : 'hover:text-brand-700' }}" href="{{ route('agent.chat') }}">Agent</a>
                 </nav>
 
                 <div class="flex items-center gap-3">
@@ -106,6 +107,7 @@
                     <a href="{{ url('/#services') }}">Services</a>
                     <a href="{{ route('blogs.index') }}">Blog</a>
                     <a href="{{ route('contact') }}">Contact</a>
+                    <a href="{{ route('agent.chat') }}">Agent</a>
                     <a href="{{ route('flights.index') }}">Flights</a>
                     <a href="{{ route('hotels.index') }}">Hotels</a>
                     @auth
@@ -172,6 +174,7 @@
                         <p class="text-xs font-bold tracking-[0.18em] text-white">SERVICES</p>
                         <div class="mt-4 grid gap-2 text-sm">
                             <a href="{{ route('flights.index') }}" class="hover:text-white">Flights</a>
+                            <a href="{{ route('agent.chat') }}" class="hover:text-white">Flight agent</a>
                             <a href="{{ route('hotels.index') }}" class="hover:text-white">Hotels</a>
                             <a href="{{ route('packages.index') }}" class="hover:text-white">Holiday packages</a>
                             <a href="{{ route('cabs.index') }}" class="hover:text-white">Cabs</a>

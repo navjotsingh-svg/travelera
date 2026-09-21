@@ -289,6 +289,7 @@ class DuffelFlightService
             'departure_at' => isset($firstSegment['departing_at']) ? Carbon::parse($firstSegment['departing_at']) : null,
             'arrival_at' => isset($lastSegment['arriving_at']) ? Carbon::parse($lastSegment['arriving_at']) : null,
             'duration' => $this->formatDuration($firstSlice['duration'] ?? null),
+            'duration_minutes' => $this->durationMinutes($firstSlice['duration'] ?? null, $firstSegment['departing_at'] ?? null, $lastSegment['arriving_at'] ?? null),
             'stops' => max(0, count($firstSlice['segments'] ?? []) - 1),
             'cabin_class' => $offer['cabin_class'] ?? 'economy',
             'fare_brand' => $firstSlice['fare_brand_name'] ?? ($offer['cabin_class'] ?? 'Standard'),
@@ -744,5 +745,24 @@ class DuffelFlightService
         } catch (Exception) {
             return Str::of($iso)->replace(['PT', 'H', 'M'], ['', 'h ', 'm'])->toString();
         }
+    }
+
+    private function durationMinutes(?string $iso, ?string $departingAt = null, ?string $arrivingAt = null): int
+    {
+        if ($iso) {
+            try {
+                $interval = new DateInterval($iso);
+
+                return (int) (($interval->d * 24 * 60) + ($interval->h * 60) + $interval->i);
+            } catch (Exception) {
+                // Fall through to timestamps.
+            }
+        }
+
+        if ($departingAt && $arrivingAt) {
+            return (int) max(0, Carbon::parse($departingAt)->diffInMinutes(Carbon::parse($arrivingAt)));
+        }
+
+        return PHP_INT_MAX;
     }
 }

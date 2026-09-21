@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AgentChatController;
 use App\Http\Controllers\AirportController;
 use App\Http\Controllers\BlogController;
 use App\Http\Controllers\BookingController;
@@ -39,6 +40,15 @@ Route::middleware('auth')->group(function () {
     Route::post('/flights/offers/{offer}/book', [FlightBookingController::class, 'store'])->name('flights.book.store');
 });
 Route::get('/flights/{flight}', [FlightController::class, 'show'])->name('flights.show');
+
+Route::get('/agent', [AgentChatController::class, 'show'])->name('agent.chat');
+Route::get('/agent/login', [AgentChatController::class, 'login'])->name('agent.login');
+Route::post('/agent/chat', [AgentChatController::class, 'store'])
+    ->middleware('throttle:20,1')
+    ->name('agent.chat.store');
+Route::post('/agent/checkout', [AgentChatController::class, 'checkout'])
+    ->middleware(['auth', 'throttle:10,1'])
+    ->name('agent.checkout');
 
 Route::post('/paypal/webhook', [\App\Http\Controllers\PaymentController::class, 'webhook'])
     ->name('payments.webhook');
