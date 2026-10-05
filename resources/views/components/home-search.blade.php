@@ -188,6 +188,6 @@
 
 <div class="booking-links">
     <a href="{{ route('home') }}">Travelera BluSky Rewards <img src="{{ asset('images/teer.png') }}"></a>
-    <a href="{{ route('visa') }}">Flight Cancellation Policy <img src="{{ asset('images/teer.png') }}"></a>
+    <a href="{{ route('legal.cancellation') }}">Flight Cancellation Policy <img src="{{ asset('images/teer.png') }}"></a>
     <a href="{{ route('bookings.index') }}">Manage My Booking <img src="{{ asset('images/teer.png') }}"></a>
 </div>

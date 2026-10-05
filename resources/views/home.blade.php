@@ -101,7 +101,7 @@
                     <div><p class="text-2xl font-extrabold">12+</p><p class="mt-1 text-xs text-blue-200">Years of care</p></div>
                     <div><p class="text-2xl font-extrabold">50+</p><p class="mt-1 text-xs text-blue-200">Destinations</p></div>
                     <div><p class="text-2xl font-extrabold">10k+</p><p class="mt-1 text-xs text-blue-200">Happy clients</p></div>
-                    <div><p class="text-2xl font-extrabold">24/7</p><p class="mt-1 text-xs text-blue-200">Support</p></div>
+                    <div><p class="text-2xl font-extrabold">24/7</p><p class="mt-1 text-xs leading-5 text-blue-200">Online Booking &amp; Booking Requests</p></div>
                 </div>
             </div>
             <div class="relative">

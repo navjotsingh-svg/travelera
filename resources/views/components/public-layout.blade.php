@@ -156,7 +156,7 @@
                     </form>
                 </div>
 
-                <div class="grid gap-10 py-10 sm:grid-cols-2 lg:grid-cols-5">
+                <div class="grid gap-10 py-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                     <div class="lg:col-span-1">
                         <a href="{{ route('home') }}" class="inline-block rounded-xl bg-white px-3 py-2">
                             <x-application-logo class="h-10 w-auto" />
@@ -185,8 +185,10 @@
                         <div class="mt-4 grid gap-2 text-sm">
                             <a href="tel:+18886526415" class="hover:text-white">+1 888 652 6415</a>
                             <a href="mailto:support@travelera.us" class="hover:text-white">support@travelera.us</a>
+                            <a href="mailto:booking@travelera.us" class="hover:text-white">booking@travelera.us</a>
                             <a href="{{ route('contact') }}" class="hover:text-white">Help desk</a>
-                            <span>24×7 booking desk</span>
+                            <span>Mon–Fri 9:00 AM–5:00 PM</span>
+                            <span>Sat 10:00 AM–2:00 PM</span>
                         </div>
                     </div>
                     <div>
@@ -195,6 +197,15 @@
                             <a href="{{ route('about') }}" class="hover:text-white">Our story</a>
                             <a href="{{ route('login') }}" class="hover:text-white">Login</a>
                             <a href="{{ route('register') }}" class="hover:text-white">Register</a>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold tracking-[0.18em] text-white">LEGAL</p>
+                        <div class="mt-4 grid gap-2 text-sm">
+                            <a href="{{ route('legal.terms') }}" class="hover:text-white">Terms &amp; Conditions</a>
+                            <a href="{{ route('legal.cancellation') }}" class="hover:text-white">Cancellation &amp; Refund Policy</a>
+                            <a href="{{ route('legal.privacy') }}" class="hover:text-white">Privacy Policy</a>
+                            <a href="{{ route('legal.disclaimer') }}" class="hover:text-white">Disclaimer</a>
                         </div>
                     </div>
                 </div>

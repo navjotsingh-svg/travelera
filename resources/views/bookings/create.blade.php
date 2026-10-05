@@ -1,6 +1,7 @@
 <x-public-layout title="Complete booking">
     <div class="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
         <h1 class="text-3xl font-extrabold">Complete your booking</h1>
+        <p class="mt-2 text-sm text-slate-600">You can book as a guest. We send the confirmation to the email below.</p>
         <p class="mt-2 text-slate-500">{{ ucfirst($type) }} ·
             @if ($type === 'flight')
                 {{ $bookable->airline }} {{ $bookable->flight_number }} · {{ $bookable->origin }} → {{ $bookable->destination }}
@@ -27,15 +28,15 @@
             <div class="grid gap-4 md:grid-cols-2">
                 <div>
                     <label class="text-sm font-medium">Lead traveler</label>
-                    <input name="guest_name" value="{{ old('guest_name', auth()->user()->name) }}" class="mt-1 w-full rounded-2xl border-slate-200" required>
+                    <input name="guest_name" value="{{ old('guest_name', auth()->user()?->name) }}" class="mt-1 w-full rounded-2xl border-slate-200" required>
                 </div>
                 <div>
                     <label class="text-sm font-medium">Email</label>
-                    <input type="email" name="guest_email" value="{{ old('guest_email', auth()->user()->email) }}" class="mt-1 w-full rounded-2xl border-slate-200" required>
+                    <input type="email" name="guest_email" value="{{ old('guest_email', auth()->user()?->email) }}" class="mt-1 w-full rounded-2xl border-slate-200" required>
                 </div>
                 <div>
                     <label class="text-sm font-medium">Phone</label>
-                    <input name="guest_phone" value="{{ old('guest_phone', auth()->user()->phone) }}" class="mt-1 w-full rounded-2xl border-slate-200">
+                    <input name="guest_phone" value="{{ old('guest_phone', auth()->user()?->phone) }}" class="mt-1 w-full rounded-2xl border-slate-200">
                 </div>
                 <div>
                     <label class="text-sm font-medium">Travelers</label>

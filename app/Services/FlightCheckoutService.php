@@ -7,6 +7,7 @@ use App\Models\CheckoutAttempt;
 use App\Models\Flight;
 use App\Models\SavedPassenger;
 use App\Models\User;
+use App\Support\GuestBookingAccess;
 use App\Services\Duffel\DuffelException;
 use App\Services\Duffel\DuffelFlightService;
 use App\Services\PayPal\PayPalException;
@@ -36,7 +37,7 @@ class FlightCheckoutService
      *     currency?: string
      * }
      */
-    public function start(User $user, string $offerId, array $validated): array
+    public function start(?User $user, string $offerId, array $validated): array
     {
         try {
             $flight = $this->duffel->offer($offerId);
@@ -63,7 +64,9 @@ class FlightCheckoutService
             })
             ->all();
 
-        $this->rememberPassengers($user->id, $passengers);
+        if ($user) {
+            $this->rememberPassengers($user->id, $passengers);
+        }
 
         $services = $validated['services'] ?? [];
         $orderType = ($validated['payment_choice'] ?? '') === 'hold' ? 'hold' : 'instant';
@@ -88,7 +91,7 @@ class FlightCheckoutService
         ];
 
         $booking = Booking::query()->create([
-            'user_id' => $user->id,
+            'user_id' => $user?->id,
             'bookable_type' => Flight::class,
             'bookable_id' => $localFlight->id,
             'provider' => 'duffel',
@@ -112,12 +115,22 @@ class FlightCheckoutService
             ),
         ]);
 
-        $attempt = CheckoutAttempt::query()
-            ->where('user_id', $user->id)
-            ->where('offer_id', $offerId)
-            ->whereIn('status', ['started', 'awaiting_payment'])
-            ->latest('id')
-            ->first();
+        $attempt = null;
+        if ($user) {
+            $attempt = CheckoutAttempt::query()
+                ->where('user_id', $user->id)
+                ->where('offer_id', $offerId)
+                ->whereIn('status', ['started', 'awaiting_payment'])
+                ->latest('id')
+                ->first();
+        } elseif ($attemptId = session('checkout_attempt_'.$offerId)) {
+            $attempt = CheckoutAttempt::query()
+                ->whereKey($attemptId)
+                ->whereNull('user_id')
+                ->where('offer_id', $offerId)
+                ->whereIn('status', ['started', 'awaiting_payment'])
+                ->first();
+        }
 
         $attemptData = [
             'booking_id' => $booking->id,
@@ -134,11 +147,19 @@ class FlightCheckoutService
         if ($attempt) {
             $attempt->update($attemptData);
         } else {
-            CheckoutAttempt::query()->create(array_merge([
-                'user_id' => $user->id,
+            $attempt = CheckoutAttempt::query()->create(array_merge([
+                'user_id' => $user?->id,
                 'offer_id' => $offerId,
             ], $attemptData));
+
+            if (! $user) {
+                session(['checkout_attempt_'.$offerId => $attempt->id]);
+            }
         }
+
+        $access = GuestBookingAccess::issueToken($booking->fresh());
+        $returnUrl = route('payments.success', ['access' => $access], true);
+        $cancelUrl = route('payments.cancel', ['access' => $access], true);
 
         if ($orderType === 'hold' || ! $this->paypal->configured()) {
             try {
@@ -167,8 +188,8 @@ class FlightCheckoutService
         try {
             $order = $this->paypal->createOrder(
                 $booking,
-                route('payments.success', absolute: true),
-                route('payments.cancel', absolute: true),
+                $returnUrl,
+                $cancelUrl,
                 [
                     'name' => $flight['airline'].' '.$flight['flight_number'],
                     'description' => $flight['origin'].' → '.$flight['destination'],

@@ -191,7 +191,10 @@ class BookingFulfillmentService
                     'payment_status' => $claim['order_type'] === 'hold' ? 'pending' : 'paid',
                     'snapshot' => array_merge(
                         $this->duffel->snapshotFromOffer($flight, $selectedServices),
-                        ['checkout' => $claim['payload']]
+                        ['checkout' => $claim['payload']],
+                        filled(data_get($booking->snapshot, 'guest_access_hash'))
+                            ? ['guest_access_hash' => data_get($booking->snapshot, 'guest_access_hash')]
+                            : []
                     ),
                 ]);
 
@@ -222,7 +225,7 @@ class BookingFulfillmentService
             ->where(function ($query) use ($booking) {
                 $query->where('booking_id', $booking->id);
 
-                if ($booking->duffel_offer_id) {
+                if ($booking->user_id && $booking->duffel_offer_id) {
                     $query->orWhere(function ($inner) use ($booking) {
                         $inner->where('offer_id', $booking->duffel_offer_id)
                             ->where('user_id', $booking->user_id)

@@ -6,7 +6,8 @@
             'id' => $p['id'] ?? ('pas_'.$i),
             'label' => 'Adult '.($i + 1),
         ])->all();
-        $nameParts = explode(' ', auth()->user()->name, 2);
+        $account = auth()->user();
+        $nameParts = explode(' ', $account?->name ?? '', 2);
         $firstSlice = ($flight['slices'] ?? [])[0] ?? null;
         $firstSegment = ($firstSlice['segments'] ?? [])[0] ?? null;
         $supportsHold = (bool) ($flight['supports_hold'] ?? false);
@@ -34,7 +35,7 @@
                 'family_name' => $nameParts[1] ?? '',
                 'gender' => 'm',
                 'born_on' => '',
-                'email' => auth()->user()->email,
+                'email' => $account?->email ?? '',
                 'phone_number' => $defaultPhone ?? '',
                 'passport_country' => '',
                 'passport_number' => '',
@@ -177,7 +178,7 @@
 
                 <section class="duffel-passengers">
                     <h2>Passengers</h2>
-                    <p class="duffel-pax-hint">Select a saved traveller or add someone new — just like your travel wallet.</p>
+                    <p class="duffel-pax-hint">Book as a guest with your email and phone. A confirmation is sent there. @guest An account is optional. @endguest</p>
 
                     <template x-for="(form, index) in passengerForms" :key="'pax-' + index">
                         <div class="duffel-passenger-block">

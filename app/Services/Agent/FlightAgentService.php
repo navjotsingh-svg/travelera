@@ -343,9 +343,7 @@ class FlightAgentService
         $checkout = $this->checkoutForm($presented, $chosen, $user);
         $intent['selected_offer_id'] = $chosen['id'] ?? null;
 
-        $reply = $user
-            ? 'I kept this in the chat. Add passenger details below, then choose hold or pay. Nothing is charged until you open PayPal yourself.'
-            : 'I can finish this in the chat after you sign in. Passenger details and payment stay here — I never auto-charge.';
+        $reply = 'I kept this in the chat. Add passenger details below, then choose hold or pay. No account is required. Nothing is charged until you open PayPal yourself.';
 
         if ($user && $user->savedPassengers()->exists()) {
             $reply .= ' Your saved passengers can be applied with one tap.';
@@ -383,7 +381,7 @@ class FlightAgentService
 
         return [
             'offer_id' => $presented['id'],
-            'auth_required' => $user === null,
+            'auth_required' => false,
             'login_url' => route('agent.login'),
             'passenger_count' => max(1, (int) ($chosen['passenger_count'] ?? $presented['passenger_count'] ?? 1)),
             'supports_hold' => (bool) ($chosen['supports_hold'] ?? false),

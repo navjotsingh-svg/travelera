@@ -4964,4 +4964,200 @@ a.admin-stat:hover {
     }
 }
 
+.legal-page {
+    background:
+        radial-gradient(ellipse 70% 40% at 0% 0%, rgba(43, 107, 255, 0.08), transparent 55%),
+        linear-gradient(180deg, #f4f7fd 0%, #ffffff 28%, #f7f9fd 100%);
+}
+
+.legal-hero {
+    position: relative;
+    overflow: hidden;
+    min-height: 280px;
+}
+
+.legal-hero-photo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 30%;
+}
+
+.legal-hero-veil {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(105deg, rgba(4, 21, 63, 0.94) 0%, rgba(10, 42, 143, 0.78) 52%, rgba(43, 107, 255, 0.42) 100%),
+        linear-gradient(to top, rgba(4, 21, 63, 0.45), transparent 42%);
+}
+
+.legal-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.12);
+    color: #eff6ff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 0.4rem 0.8rem;
+    backdrop-filter: blur(8px);
+}
+
+.legal-sheet-wrap {
+    position: relative;
+    z-index: 2;
+    max-width: 52rem;
+    margin: -4.5rem auto 0;
+    padding: 0 1rem 4rem;
+}
+
+.legal-switch {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.85rem;
+}
+
+.legal-switch a {
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #e4ebf6;
+    color: #334155;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.45rem 0.85rem;
+    box-shadow: 0 8px 20px rgba(4, 21, 63, 0.06);
+}
+
+.legal-switch a.is-active,
+.legal-switch a:hover {
+    background: #04153f;
+    border-color: #04153f;
+    color: #fff;
+}
+
+.legal-doc {
+    color: #334155;
+    font-size: 1rem;
+    line-height: 1.75;
+    background: #fff;
+    border: 1px solid #e8eef7;
+    border-radius: 28px;
+    padding: 1.75rem 1.35rem 2rem;
+    box-shadow: 0 28px 70px rgba(4, 21, 63, 0.1);
+}
+
+.legal-doc > p:first-of-type {
+    font-size: 1.05rem;
+    color: #0f172a;
+}
+
+.legal-doc h2 {
+    margin-top: 2.25rem;
+    margin-bottom: 0.85rem;
+    padding-top: 1.35rem;
+    border-top: 1px solid #e8eef6;
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #04153f;
+}
+
+.legal-doc h2::before {
+    content: "";
+    display: inline-block;
+    width: 0.45rem;
+    height: 0.45rem;
+    margin-right: 0.55rem;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #2b6bff, #04153f);
+    transform: translateY(-0.12rem);
+}
+
+.legal-doc h3 {
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: #0a2a8f;
+}
+
+.legal-doc p + p,
+.legal-doc ul + p,
+.legal-doc h3 + p {
+    margin-top: 0.85rem;
+}
+
+.legal-doc ul {
+    margin: 0.85rem 0 0;
+    padding: 0.85rem 1rem 0.95rem 1rem;
+    list-style: none;
+    border-radius: 16px;
+    background: #f6f8fd;
+    border: 1px solid #e8eef6;
+}
+
+.legal-doc li {
+    position: relative;
+    padding-left: 1.15rem;
+}
+
+.legal-doc li + li {
+    margin-top: 0.45rem;
+}
+
+.legal-doc li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 0.38rem;
+    height: 0.38rem;
+    border-radius: 999px;
+    background: #2b6bff;
+}
+
+.legal-doc a {
+    color: var(--brand);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.legal-contact,
+.legal-doc h2:last-of-type + p {
+    margin-top: 0.75rem;
+}
+
+.legal-contact {
+    padding: 1.25rem 1.35rem;
+    border-radius: 20px;
+    background: linear-gradient(145deg, #04153f, #0a2a8f 58%, #2b6bff);
+    color: #e8efff;
+    border: 0;
+}
+
+.legal-contact a {
+    color: #fff;
+}
+
+.legal-contact strong {
+    color: #fff;
+}
+
+@media (min-width: 640px) {
+    .legal-doc {
+        padding: 2.4rem 2.5rem 2.75rem;
+    }
+
+    .legal-sheet-wrap {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+}
+
 

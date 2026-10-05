@@ -101,6 +101,62 @@ class DuffelFlightTest extends TestCase
         $response->assertSee('Cabin bag');
     }
 
+    public function test_guest_can_open_checkout_and_book_without_an_account(): void
+    {
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), '/air/offers/off_0001')) {
+                return Http::response(['data' => $this->offerPayload(withServices: true)], 200);
+            }
+
+            if (str_contains($request->url(), '/air/seat_maps')) {
+                return Http::response(['data' => [$this->seatMapPayload()]], 200);
+            }
+
+            if (str_contains($request->url(), '/air/orders') && $request->method() === 'POST') {
+                return Http::response([
+                    'data' => [
+                        'id' => 'ord_guest',
+                        'booking_reference' => 'GST123',
+                        'total_amount' => '495.00',
+                        'total_currency' => 'GBP',
+                    ],
+                ], 200);
+            }
+
+            return Http::response(['errors' => [['message' => 'Unexpected Duffel URL: '.$request->url()]]], 500);
+        });
+
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+
+        $this->get('/flights/offers/off_0001/book')
+            ->assertOk()
+            ->assertSee('Book as a guest');
+
+        $response = $this->post('/flights/offers/off_0001/book', [
+            'passengers' => [[
+                'title' => 'mr',
+                'given_name' => 'Alex',
+                'family_name' => 'Guest',
+                'gender' => 'm',
+                'born_on' => '1992-01-20',
+                'email' => 'alex.guest@example.com',
+                'phone_number' => '9876543210',
+            ]],
+            'payment_choice' => 'pay_now',
+        ]);
+
+        $response->assertRedirect();
+        $bookingId = \App\Models\Booking::query()->where('guest_email', 'alex.guest@example.com')->value('id');
+        $this->assertNotNull($bookingId);
+        $this->assertDatabaseHas('bookings', [
+            'id' => $bookingId,
+            'user_id' => null,
+            'guest_email' => 'alex.guest@example.com',
+        ]);
+
+        $this->get('/bookings/'.$bookingId)->assertOk()->assertSee('alex.guest@example.com');
+    }
+
     public function test_authenticated_user_can_book_a_duffel_offer_with_extras(): void
     {
         Http::fake(function ($request) {

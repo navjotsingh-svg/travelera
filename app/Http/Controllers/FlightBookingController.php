@@ -35,21 +35,32 @@ class FlightBookingController extends Controller
                 ->with('status', $exception->getMessage());
         }
 
-        CheckoutAttempt::query()->updateOrCreate(
-            [
-                'user_id' => request()->user()?->id,
+        $attemptAttributes = [
+            'airline' => $flight['airline'] ?? null,
+            'flight_number' => $flight['flight_number'] ?? null,
+            'origin' => $flight['origin'] ?? null,
+            'destination' => $flight['destination'] ?? null,
+            'amount' => $flight['total_amount'] ?? null,
+            'currency' => $flight['total_currency'] ?? 'INR',
+        ];
+
+        if ($userId = request()->user()?->id) {
+            CheckoutAttempt::query()->updateOrCreate(
+                [
+                    'user_id' => $userId,
+                    'offer_id' => $offer,
+                    'status' => 'started',
+                ],
+                $attemptAttributes
+            );
+        } else {
+            $attempt = CheckoutAttempt::query()->create(array_merge($attemptAttributes, [
+                'user_id' => null,
                 'offer_id' => $offer,
                 'status' => 'started',
-            ],
-            [
-                'airline' => $flight['airline'] ?? null,
-                'flight_number' => $flight['flight_number'] ?? null,
-                'origin' => $flight['origin'] ?? null,
-                'destination' => $flight['destination'] ?? null,
-                'amount' => $flight['total_amount'] ?? null,
-                'currency' => $flight['total_currency'] ?? 'INR',
-            ]
-        );
+            ]));
+            session(['checkout_attempt_'.$offer => $attempt->id]);
+        }
 
         return view('flights.book', [
             'flight' => $flight,

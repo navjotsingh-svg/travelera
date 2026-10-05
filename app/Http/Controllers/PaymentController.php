@@ -8,6 +8,7 @@ use App\Services\BookingFulfillmentService;
 use App\Services\Duffel\DuffelException;
 use App\Services\PayPal\PayPalException;
 use App\Services\PayPal\PayPalPaymentService;
+use App\Support\GuestBookingAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -54,7 +55,7 @@ class PaymentController extends Controller
             $booking = Booking::query()->find($order['booking_id']);
         }
 
-        abort_unless($booking && $booking->user_id === $request->user()?->id, 404);
+        abort_unless($booking && GuestBookingAccess::allows($request->user(), $booking, $request->query('access')), 404);
 
         $booking->update([
             'paypal_order_id' => $order['id'],
@@ -110,8 +111,11 @@ class PaymentController extends Controller
         if ($orderId !== '') {
             $booking = Booking::query()
                 ->where('paypal_order_id', $orderId)
-                ->where('user_id', $request->user()->id)
                 ->first();
+
+            if ($booking && ! GuestBookingAccess::allows($request->user(), $booking, $request->query('access'))) {
+                $booking = null;
+            }
         }
 
         if ($booking && $booking->payment_status !== 'paid') {

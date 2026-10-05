@@ -15,6 +15,7 @@ use App\Services\Duffel\DuffelFlightService;
 use App\Services\PayPal\PayPalException;
 use App\Services\PayPal\PayPalPaymentService;
 use App\Services\PlatformFeeService;
+use App\Support\GuestBookingAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -81,12 +82,12 @@ class BookingController extends Controller
         $pricing = $this->platformFee->breakdown($total);
 
         $booking = Booking::query()->create([
-            'user_id' => $request->user()->id,
+            'user_id' => $request->user()?->id,
             'bookable_type' => $bookable::class,
             'bookable_id' => $bookable->id,
             'guest_name' => $validated['guest_name'],
             'guest_email' => $validated['guest_email'],
-            'guest_phone' => $validated['guest_phone'] ?? $request->user()->phone,
+            'guest_phone' => $validated['guest_phone'] ?? $request->user()?->phone,
             'travelers' => $validated['travelers'],
             'travel_date' => $validated['travel_date'] ?? $validated['check_in'] ?? now()->toDateString(),
             'check_in' => $validated['check_in'] ?? null,
@@ -105,6 +106,8 @@ class BookingController extends Controller
             'notes' => $validated['notes'] ?? null,
         ]);
 
+        $access = GuestBookingAccess::issueToken($booking);
+
         if (! $this->paypal->configured()) {
             $booking = $this->fulfillment->fulfillPaidBooking($booking);
 
@@ -116,8 +119,8 @@ class BookingController extends Controller
         try {
             $order = $this->paypal->createOrder(
                 $booking,
-                route('payments.success', absolute: true),
-                route('payments.cancel', absolute: true),
+                route('payments.success', ['access' => $access], true),
+                route('payments.cancel', ['access' => $access], true),
                 [
                     'name' => $booking->title(),
                     'description' => 'Travelera '.$booking->typeLabel().' booking',
@@ -133,7 +136,7 @@ class BookingController extends Controller
         $booking->update(['paypal_order_id' => $order['id']]);
 
         CheckoutAttempt::query()->create([
-            'user_id' => $request->user()->id,
+            'user_id' => $request->user()?->id,
             'booking_id' => $booking->id,
             'amount' => $booking->total_amount,
             'currency' => $booking->currency,
@@ -147,7 +150,7 @@ class BookingController extends Controller
 
     public function show(Request $request, Booking $booking): View
     {
-        abort_unless($booking->user_id === $request->user()->id, 403);
+        abort_unless(GuestBookingAccess::allows($request->user(), $booking, $request->query('access')), 403);
 
         $booking->load('bookable');
 
@@ -156,7 +159,7 @@ class BookingController extends Controller
 
     public function cancel(Request $request, Booking $booking, DuffelFlightService $duffel): RedirectResponse
     {
-        abort_unless($booking->user_id === $request->user()->id, 403);
+        abort_unless(GuestBookingAccess::allows($request->user(), $booking), 403);
 
         if ($booking->status === 'cancelled') {
             return back()->with('status', 'Booking is already cancelled.');
