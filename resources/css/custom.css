@@ -890,7 +890,7 @@ h6,
     }
 
     .relative h1.hero-title {
-        bottom: 5.25rem;
+        bottom: 5.25rem !important;
         font-size: 1.85rem;
         line-height: 1.15;
         padding: 0 12px;
