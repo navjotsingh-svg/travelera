@@ -5158,6 +5158,9 @@ a.admin-stat:hover {
         padding-left: 1.5rem;
         padding-right: 1.5rem;
     }
+    .relative h1.hero-title {
+    bottom: 5rem !important;
+   }
 }
 
 
